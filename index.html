@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IMDb – What to Watch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ══════════════════════════════════ HEADER ══════════════════════════════════ -->
+<header id="app-header">
+  <div class="header-left">
+    <span class="logo-imdb">IMDb</span>
+    <span class="logo-sub">What to Watch</span>
+  </div>
+  <div class="header-right">
+    <button id="btn-theme" class="hdr-btn" title="Chuyển Dark/Light">☀️ Light</button>
+    <button id="btn-export" class="hdr-btn" title="Xuất danh sách">📥 Export</button>
+    <button id="btn-tmdb-key" class="hdr-btn key-btn" title="Nhập TMDB API Key">🔑 TMDB Key</button>
+    <button id="btn-refresh" class="hdr-btn accent-btn" title="Tải lại">↻ Refresh</button>
+    <button id="btn-random" class="hdr-btn gold-btn" title="Chọn ngẫu nhiên">🎲 Random</button>
+  </div>
+  <!-- Export dropdown -->
+  <div id="export-menu" class="dropdown-menu hidden">
+    <button data-export="csv-current">📊 Xuất CSV (danh sách hiện tại)</button>
+    <button data-export="txt-current">📄 Xuất TXT</button>
+    <hr/>
+    <button data-export="csv-watchlist">❤️ Xuất Watchlist CSV</button>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════ SEARCH BAR ══════════════════════════════════ -->
+<div id="search-bar">
+  <div class="search-inner">
+    <span class="search-icon">🔍</span>
+    <div class="search-wrap">
+      <input id="search-input" type="text" placeholder="Tìm tên phim hoặc nhấn Enter để search IMDb..." autocomplete="off" />
+      <div id="autocomplete-dropdown" class="autocomplete hidden"></div>
+    </div>
+    <button id="btn-search-imdb" class="search-btn">🌐 Tìm trên IMDb</button>
+    <button id="btn-search-clear" class="search-clear">✕</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ TABS ══════════════════════════════════ -->
+<nav id="tab-bar">
+  <button class="tab-btn active" data-tab="browse">🎬 Duyệt phim</button>
+  <button class="tab-btn" data-tab="watchlist">❤️ Watchlist <span id="wl-count">(0)</span></button>
+  <button class="tab-btn" data-tab="cinema">🎬 Rạp chiếu</button>
+  <button class="tab-btn" data-tab="onthisday">📅 Ngày này năm xưa</button>
+  <button class="tab-btn" data-tab="bracket">🏆 Bracket</button>
+</nav>
+
+<!-- ══════════════════════════════════ FILTER PANEL ══════════════════════════════════ -->
+<div id="filter-panel">
+  <!-- Mode tabs -->
+  <div class="filter-mode-bar">
+    <button class="fmode-btn active" data-mode="filter">🔧 Bộ lọc tùy chỉnh</button>
+    <button class="fmode-btn" data-mode="static">⭐ Top 250 / Chart</button>
+    <button id="btn-collapse" class="collapse-btn">▲ Thu gọn</button>
+  </div>
+
+  <div id="filter-body">
+    <!-- Static source row -->
+    <div id="static-row" class="filter-row hidden">
+      <label>📡 Nguồn:</label>
+      <select id="sel-static" class="fsel wide"></select>
+    </div>
+
+    <!-- Filter rows -->
+    <div id="custom-rows">
+      <!-- Row 1: Date -->
+      <div class="filter-row" id="date-row">
+        <label>📅 Thời gian:</label>
+        <select id="sel-decade" class="fsel"></select>
+        <div id="custom-date-wrap" class="hidden">
+          <span>Từ:</span>
+          <input id="year-from" type="number" min="1900" max="2030" class="year-inp" />
+          <span>Đến:</span>
+          <input id="year-to" type="number" min="1900" max="2030" class="year-inp" />
+          <button id="btn-apply-date" class="apply-btn">✓ Áp dụng</button>
+        </div>
+        <div class="presets" id="decade-presets"></div>
+      </div>
+      <!-- Row 2: Genre, Sort, Rating, Type -->
+      <div class="filter-row">
+        <label>🎭 Thể loại:</label><select id="sel-genre" class="fsel"></select>
+        <label>↕️ Sắp xếp:</label><select id="sel-sort" class="fsel"></select>
+        <label>⭐ Rating:</label><select id="sel-rating" class="fsel narrow"></select>
+        <label>🎞️ Loại:</label><select id="sel-type" class="fsel"></select>
+      </div>
+      <!-- Row 3: Language, Count, Shuffle -->
+      <div class="filter-row">
+        <label>🌐 Ngôn ngữ:</label><select id="sel-language" class="fsel"></select>
+        <label>🔢 Số phim:</label><select id="sel-count" class="fsel narrow"></select>
+        <button id="btn-shuffle" class="shuffle-btn">🔀 Xáo trộn</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ STATUS BAR ══════════════════════════════════ -->
+<div id="status-bar">
+  <span id="status-text">Đang khởi động...</span>
+  <span id="status-url"></span>
+  <span id="status-count"></span>
+</div>
+
+<!-- ══════════════════════════════════ MAIN CONTENT ══════════════════════════════════ -->
+<main id="main-content">
+  <!-- Movie grid (browse / watchlist) -->
+  <div id="movie-grid"></div>
+
+  <!-- Tab: Cinema -->
+  <div id="tab-cinema" class="tab-page hidden">
+    <div class="tab-page-header">
+      <h2>🎬 Phim Đang Chiếu Rạp</h2>
+      <div class="cinema-search">
+        <label>🌍 Quốc gia:</label>
+        <input id="cinema-region" type="text" value="US" maxlength="4" class="region-inp" />
+        <button id="btn-cinema-search" class="apply-btn">🔍 Tìm</button>
+        <div class="region-presets">
+          <span>Nhanh:</span>
+          <button data-region="US">🇺🇸 US</button>
+          <button data-region="VN">🇻🇳 VN</button>
+          <button data-region="KR">🇰🇷 KR</button>
+          <button data-region="JP">🇯🇵 JP</button>
+          <button data-region="GB">🇬🇧 GB</button>
+          <button data-region="FR">🇫🇷 FR</button>
+          <button data-region="CN">🇨🇳 CN</button>
+          <button data-region="IN">🇮🇳 IN</button>
+          <button data-region="TH">🇹🇭 TH</button>
+        </div>
+      </div>
+    </div>
+    <div id="cinema-grid" class="movie-grid-inner"></div>
+  </div>
+
+  <!-- Tab: On This Day -->
+  <div id="tab-onthisday" class="tab-page hidden">
+    <div class="tab-page-header">
+      <h2 id="otd-title">📅 Ngày này năm xưa</h2>
+      <p class="tab-sub">Phim hay nhất ra mắt đúng ngày hôm nay qua các thập kỷ</p>
+      <div class="otd-controls">
+        <label>Từ năm:</label>
+        <select id="otd-year-from" class="fsel narrow"></select>
+        <label>Loại:</label>
+        <select id="otd-type" class="fsel">
+          <option value="">🎬 Tất cả</option>
+          <option value="movie">🎬 Phim lẻ</option>
+          <option value="tv">📺 TV Series</option>
+          <option value="mini">🔂 Mini Series</option>
+        </select>
+      </div>
+    </div>
+    <div id="onthisday-grid" class="movie-grid-inner"></div>
+  </div>
+
+  <!-- Tab: Bracket -->
+  <div id="tab-bracket" class="tab-page hidden">
+    <div class="bracket-setup">
+      <h2>🏆 Movie Bracket</h2>
+      <p class="tab-sub">Phim nào sẽ là Champion?</p>
+      <div class="bracket-steps">
+        <div class="bracket-step" style="--c:#1a3a5a">
+          <span>🎬</span><strong>Vòng 1</strong><small>20 phim tranh tài</small>
+        </div>
+        <span class="step-arrow">→</span>
+        <div class="bracket-step" style="--c:#1a2a4a">
+          <span>⚔️</span><strong>Vòng 2</strong><small>10 phim còn lại</small>
+        </div>
+        <span class="step-arrow">→</span>
+        <div class="bracket-step" style="--c:#2a1a3a">
+          <span>🔥</span><strong>Vòng 3</strong><small>5 phim xuất sắc</small>
+        </div>
+        <span class="step-arrow">→</span>
+        <div class="bracket-step" style="--c:#2a1a1a">
+          <span>👑</span><strong>Vòng 4</strong><small>3 finalists</small>
+        </div>
+        <span class="step-arrow">→</span>
+        <div class="bracket-step" style="--c:#1a1500">
+          <span>🏆</span><strong>CHAMPION</strong><small>1 phim bất bại</small>
+        </div>
+      </div>
+      <button id="btn-start-bracket" class="start-bracket-btn">🚀 START BRACKET</button>
+      <p class="bracket-hint">Phim được lấy từ: danh sách đang xem + Watchlist + Rạp chiếu</p>
+    </div>
+  </div>
+</main>
+
+<!-- ══════════════════════════════════ DETAIL PAGE ══════════════════════════════════ -->
+<div id="detail-page" class="fullpage hidden">
+<div class="detail-back-bar">
+  <button id="btn-back-detail" class="back-btn">← Quay lại</button>
+</div>
+  <div class="detail-body" id="detail-body"></div>
+</div>
+
+<!-- ══════════════════════════════════ ACTOR PAGE ══════════════════════════════════ -->
+<div id="actor-page" class="fullpage hidden">
+  <div class="detail-back-bar">
+    <button id="btn-back-actor" class="back-btn">← Quay lại</button>
+  </div>
+  <div id="actor-body" class="actor-body"></div>
+</div>
+
+<!-- ══════════════════════════════════ DIRECTOR PAGE ══════════════════════════════════ -->
+<div id="director-page" class="fullpage hidden">
+  <div class="detail-back-bar">
+    <button id="btn-back-director" class="back-btn">← Quay lại</button>
+  </div>
+  <div id="director-body" class="actor-body"></div>
+</div>
+
+<!-- ══════════════════════════════════ TMDB KEY MODAL ══════════════════════════════════ -->
+<div id="tmdb-modal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h3>🔑 TMDB API Key</h3>
+    <p class="modal-sub">Đăng ký miễn phí: <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org → Settings → API</a></p>
+    <p class="modal-hint">Poster sẽ hiển thị nhanh hơn rất nhiều</p>
+    <input id="tmdb-key-input" type="text" placeholder="Nhập TMDB API Key..." />
+    <div class="modal-btns">
+      <a href="https://www.themoviedb.org/settings/api" target="_blank" class="modal-btn secondary">🌐 Lấy key</a>
+      <button id="btn-save-key" class="modal-btn primary">💾 Lưu</button>
+      <button id="btn-cancel-key" class="modal-btn ghost">✕ Hủy</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ BRACKET OVERLAY ══════════════════════════════════ -->
+<div id="bracket-overlay" class="bracket-overlay hidden">
+  <canvas id="bracket-star-canvas"></canvas>
+  <div class="bracket-topbar">
+    <span>🏆 MOVIE BRACKET</span>
+    <button id="btn-skip-bracket">✕ Bỏ qua</button>
+  </div>
+  <div id="bracket-round-label" class="bracket-round-lbl"></div>
+  <div id="bracket-sub-label" class="bracket-sub-lbl"></div>
+  <div id="bracket-cards" class="bracket-cards-grid"></div>
+  <div id="bracket-winner-banner" class="bracket-winner-banner hidden"></div>
+</div>
+
+<!-- ══════════════════════════════════ RANDOM OVERLAY ══════════════════════════════════ -->
+<div id="random-overlay" class="random-overlay hidden">
+  <canvas id="random-particle-canvas"></canvas>
+  <div class="random-topbar">
+    <span class="random-topbar-title">🎲 RANDOM PICK</span>
+    <button id="btn-skip-random">✕ Bỏ qua</button>
+  </div>
+  <div id="random-phase-label" class="random-phase-lbl"></div>
+  <div id="random-slot-machine" class="random-slot-machine hidden">
+    <div class="slot-reel" id="slot-reel-1"><div class="slot-inner" id="slot-inner-1"></div></div>
+    <div class="slot-divider">✦</div>
+    <div class="slot-reel" id="slot-reel-2"><div class="slot-inner" id="slot-inner-2"></div></div>
+    <div class="slot-divider">✦</div>
+    <div class="slot-reel" id="slot-reel-3"><div class="slot-inner" id="slot-inner-3"></div></div>
+  </div>
+  <div id="random-cards" class="random-cards-row"></div>
+  <div id="random-winner-banner" class="random-winner-banner hidden"></div>
+  <div id="random-winner-card" class="random-winner-card hidden"></div>
+</div>
+
+<!-- ══════════════════════════════════ DAILY PICK MODAL ══════════════════════════════════ -->
+<div id="daily-modal" class="modal-overlay hidden">
+  <div class="modal-box daily-box">
+    <p class="daily-sup">🌅 Phim hôm nay dành cho bạn</p>
+    <h3 id="daily-title"></h3>
+    <p id="daily-meta"></p>
+    <div class="modal-btns">
+      <button id="btn-daily-detail" class="modal-btn primary">👀 Xem chi tiết</button>
+      <button id="btn-daily-skip" class="modal-btn ghost">Bỏ qua</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
