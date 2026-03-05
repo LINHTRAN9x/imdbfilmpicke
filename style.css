@@ -3923,3 +3923,147 @@ img { display: block; }
   .lf-ew-divider { display: none; }
   .lf-global-top-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
 }
+
+
+/* Production Info */
+.detail-prod-section { margin: 16px 0; }
+.detail-section-title { font-size: 0.95rem; font-weight: 700; margin-bottom: 10px; color: var(--light); }
+.detail-prod-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.detail-prod-row { display: flex; flex-direction: column; background: var(--bg-card); border-radius: 6px; padding: 8px 12px; }
+.detail-prod-label { font-size: 0.72rem; color: var(--gray); margin-bottom: 2px; }
+.detail-prod-val { font-size: 0.88rem; color: var(--light); font-weight: 500; }
+
+/* Keywords */
+.detail-kw-section { margin: 16px 0; }
+.detail-kw-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+.detail-kw-tag { background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 3px 10px; font-size: 0.78rem; color: var(--light); cursor: default; }
+.detail-kw-tag:hover { border-color: var(--gold); color: var(--gold); }
+
+/* Awards */
+.detail-awards-section { margin: 16px 0; }
+.awards-list { display: flex; flex-direction: column; gap: 6px; }
+.award-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg-card); border-radius: 6px; font-size: 0.82rem; }
+.award-win  { color: #f5c518; font-weight: 700; white-space: nowrap; }
+.award-nom  { color: var(--gray); white-space: nowrap; }
+.award-text { color: var(--light); }
+
+/* Share */
+.detail-share-section { margin: 16px 0; }
+.detail-share-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.share-btn { background: var(--bg-card); border: 1px solid var(--border); color: var(--light); padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 0.83rem; transition: all .2s; }
+.share-btn:hover { border-color: var(--gold); color: var(--gold); }
+.share-btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.share-btn.accent:hover { opacity: 0.85; }
+
+
+/* Awards groups */
+.awards-groups { display: flex; flex-direction: column; gap: 8px; }
+.award-group { background: var(--bg-card); border-radius: 8px; padding: 10px 14px; border: 1px solid var(--border); }
+.award-group-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.award-group-name { font-size: 0.85rem; font-weight: 600; color: var(--light); }
+.award-group-stats { display: flex; gap: 6px; }
+.aw-won { font-size: 0.75rem; background: rgba(245,197,24,0.15); color: #f5c518; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+.aw-nom { font-size: 0.75rem; background: rgba(255,255,255,0.07); color: var(--gray); padding: 2px 8px; border-radius: 20px; }
+.award-group-items { display: flex; flex-wrap: wrap; gap: 5px; }
+.aw-item { font-size: 0.75rem; padding: 3px 8px; border-radius: 4px; }
+.aw-item-won { background: rgba(245,197,24,0.1); color: #f5c518; border: 1px solid rgba(245,197,24,0.2); }
+.aw-item-nom { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+.aw-more { font-size: 0.72rem; color: var(--gray); margin-top: 4px; }
+
+
+/* Vietsub button */
+.btn-vietsub-find {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 0;
+  background: linear-gradient(135deg, #0f3460, #1a1a2e);
+  color: #7eb8f7;
+  border: 1px solid #1e4a8a;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+}
+.btn-vietsub-find:hover, .btn-vietsub-find.active {
+  background: #1a3a6a;
+  color: #a8d4ff;
+  border-color: #2a6aaa;
+}
+
+/* Vietsub Panel — hiện ngay dưới poster */
+
+.vietsub-panel-right {
+  width: 100%;
+  margin-bottom: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  animation: slideDown .2s ease;
+  height: 85vh;
+}
+.vietsub-panel {
+  width: 100%;
+  margin-top: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  animation: slideDown .2s ease;
+}
+.vs-search-row {
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+}
+.vs-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--light);
+  padding: 6px 10px;
+  font-size: 0.82rem;
+}
+.vs-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vs-tags {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 0 10px 8px;
+}
+.vs-tag {
+  font-size: 0.72rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2px 10px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+}
+.vs-tag:hover { border-color: var(--gold); color: var(--gold); }
+.vs-frame-wrap { width: 100%; height: 400px; }
+.vs-iframe {
+  width: 100%;
+  height: 600px;
+  border: none;
+  background: #fff;
+  display: block;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

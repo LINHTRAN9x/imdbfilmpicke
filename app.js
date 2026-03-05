@@ -87,38 +87,38 @@ const TYPE_OPTIONS = {
 const COUNT_OPTIONS = ['12','16','20','24','32','40','50','75','100'];
 
 const STATIC_SOURCES = {
-  '⭐ Phổ biến nhất (Movie)':       {type:'movie', sort:'popularity.desc', minVotes:1000},
-  '⭐ Đánh giá cao nhất (Movie)':   {type:'movie', sort:'vote_average.desc', minVotes:5000},
-  '🆕 Mới nhất':                    {type:'movie', sort:'release_date.desc', minVotes:100},
-  '🔥 Top Trending This Week':      {type:'movie', sort:'popularity.desc', year: CURRENT_YEAR},
-  [`🆕 Best of ${CURRENT_YEAR}`]:     {type:'movie', sort:'vote_average.desc', year: CURRENT_YEAR, minVotes:100},
-  [`📅 Best of ${CURRENT_YEAR-1}`]:   {type:'movie', sort:'vote_average.desc', year: CURRENT_YEAR-1, minVotes:500},
-  '🕰️ Best of 2010s':               {type:'movie', sort:'vote_average.desc', yearFrom:2010, yearTo:2019, minVotes:5000},
-  '📼 Best of 2000s':               {type:'movie', sort:'vote_average.desc', yearFrom:2000, yearTo:2009, minVotes:5000},
-  '📽️ Best of 1990s':               {type:'movie', sort:'vote_average.desc', yearFrom:1990, yearTo:1999, minVotes:3000},
-  '🎞️ Classics (trước 1980)':       {type:'movie', sort:'vote_average.desc', yearTo:1979, minVotes:100},
-  '❤️ Fan Favorites (Nhiều vote)':  {type:'movie', sort:'vote_count.desc'},
-  '💰 Doanh thu cao nhất':          {type:'movie', sort:'revenue.desc'},
+  '⭐ Phổ biến nhất (Movie)':       {type:'movie', sort:'popularity.desc',      minVotes:1000},
+  '⭐ Đánh giá cao nhất (Movie)':   {type:'movie', sort:'vote_average.desc',    minVotes:10000},  // ← tăng mạnh
+  '🆕 Mới nhất':                    {type:'movie', sort:'release_date.desc',    minVotes:200},    // ← tăng
+  '🔥 Top Trending This Week':      {type:'movie', sort:'popularity.desc',      minVotes:500,   year: CURRENT_YEAR},
+  [`🆕 Best of ${CURRENT_YEAR}`]:     {type:'movie', sort:'vote_average.desc',  minVotes:300,   year: CURRENT_YEAR},
+  [`📅 Best of ${CURRENT_YEAR-1}`]:   {type:'movie', sort:'vote_average.desc',  minVotes:1000,  year: CURRENT_YEAR-1},
+  '🕰️ Best of 2010s':               {type:'movie', sort:'vote_average.desc',    minVotes:10000, yearFrom:2010, yearTo:2019},
+  '📼 Best of 2000s':               {type:'movie', sort:'vote_average.desc',    minVotes:10000, yearFrom:2000, yearTo:2009},
+  '📽️ Best of 1990s':               {type:'movie', sort:'vote_average.desc',    minVotes:5000,  yearFrom:1990, yearTo:1999},
+  '🎞️ Classics (trước 1980)':       {type:'movie', sort:'vote_average.desc',    minVotes:5000,  yearTo:1979},
+  '❤️ Fan Favorites (Nhiều vote)':  {type:'movie', sort:'vote_count.desc',      minVotes:50000}, // ← phim thật sự nổi
+  '💰 Doanh thu cao nhất':          {type:'movie', sort:'revenue.desc',         minVotes:1000},
   // ── STREAMING ──
-  '🔴 New on Netflix':            {type:'movie', sort:'release_date.desc',  watchProvider:8,   watchRegion:'US', minVotes:50},
-  '🔴 Popular on Netflix':        {type:'movie', sort:'popularity.desc',    watchProvider:8,   watchRegion:'US'},
+  '🔴 New on Netflix':            {type:'movie', sort:'release_date.desc',  watchProvider:8,   watchRegion:'US', minVotes:200},
+  '🔴 Popular on Netflix':        {type:'movie', sort:'popularity.desc',    watchProvider:8,   watchRegion:'US', minVotes:500},
   '🔴 Best on Netflix':           {type:'movie', sort:'vote_average.desc',  watchProvider:8,   watchRegion:'US', minVotes:5000},
-  '📺 New on HBO Max':            {type:'movie', sort:'release_date.desc',  watchProvider:384, watchRegion:'US', minVotes:50},
-  '📺 Popular on HBO Max':        {type:'movie', sort:'popularity.desc',    watchProvider:384, watchRegion:'US'},
-  '🔵 New on Disney+':            {type:'movie', sort:'release_date.desc',  watchProvider:337, watchRegion:'US', minVotes:50},
-  '🔵 Popular on Disney+':        {type:'movie', sort:'popularity.desc',    watchProvider:337, watchRegion:'US'},
-  '🟡 New on Amazon Prime':       {type:'movie', sort:'release_date.desc',  watchProvider:9,   watchRegion:'US', minVotes:50},
-  '🟡 Popular on Amazon Prime':   {type:'movie', sort:'popularity.desc',    watchProvider:9,   watchRegion:'US'},
-  '⚫ New on Apple TV+':          {type:'movie', sort:'release_date.desc',  watchProvider:350, watchRegion:'US', minVotes:50},
-  '🦚 New on Peacock':            {type:'movie', sort:'release_date.desc',  watchProvider:386, watchRegion:'US', minVotes:50},
-  '🌟 New on Paramount+':         {type:'movie', sort:'release_date.desc',  watchProvider:531, watchRegion:'US', minVotes:50},
-  '📡 Best TV Series':              {type:'tv',    sort:'vote_average.desc', minVotes:20000},
-  '🔂 Best Mini Series':            {type:'tv',    sort:'vote_average.desc', minVotes:10000, miniSeries:true},
-  [`📺 Best TV of ${CURRENT_YEAR}`]:  {type:'tv',    sort:'vote_average.desc', year:CURRENT_YEAR, minVotes:1000},
-  '🇰🇷 Best Korean':                {type:'movie', sort:'vote_average.desc', lang:'ko', minVotes:5000},
-  '🇯🇵 Best Japanese':              {type:'movie', sort:'vote_average.desc', lang:'ja', minVotes:5000},
-  '🇫🇷 Best French':                {type:'movie', sort:'vote_average.desc', lang:'fr', minVotes:5000},
-  '🇮🇳 Best Hindi / Bollywood':     {type:'movie', sort:'vote_average.desc', lang:'hi', minVotes:5000},
+  '📺 New on HBO Max':            {type:'movie', sort:'release_date.desc',  watchProvider:384, watchRegion:'US', minVotes:200},
+  '📺 Popular on HBO Max':        {type:'movie', sort:'popularity.desc',    watchProvider:384, watchRegion:'US', minVotes:500},
+  '🔵 New on Disney+':            {type:'movie', sort:'release_date.desc',  watchProvider:337, watchRegion:'US', minVotes:200},
+  '🔵 Popular on Disney+':        {type:'movie', sort:'popularity.desc',    watchProvider:337, watchRegion:'US', minVotes:500},
+  '🟡 New on Amazon Prime':       {type:'movie', sort:'release_date.desc',  watchProvider:9,   watchRegion:'US', minVotes:200},
+  '🟡 Popular on Amazon Prime':   {type:'movie', sort:'popularity.desc',    watchProvider:9,   watchRegion:'US', minVotes:500},
+  '⚫ New on Apple TV+':          {type:'movie', sort:'release_date.desc',  watchProvider:350, watchRegion:'US', minVotes:200},
+  '🦚 New on Peacock':            {type:'movie', sort:'release_date.desc',  watchProvider:386, watchRegion:'US', minVotes:200},
+  '🌟 New on Paramount+':         {type:'movie', sort:'release_date.desc',  watchProvider:531, watchRegion:'US', minVotes:200},
+  '📡 Best TV Series':              {type:'tv',   sort:'vote_average.desc',  minVotes:20000},
+  '🔂 Best Mini Series':            {type:'tv',   sort:'vote_average.desc',  minVotes:10000, miniSeries:true},
+  [`📺 Best TV of ${CURRENT_YEAR}`]:  {type:'tv', sort:'vote_average.desc',  minVotes:1000,  year:CURRENT_YEAR},
+  '🇰🇷 Best Korean':                {type:'movie', sort:'vote_average.desc', minVotes:5000,  lang:'ko'},
+  '🇯🇵 Best Japanese':              {type:'movie', sort:'vote_average.desc', minVotes:5000,  lang:'ja'},
+  '🇫🇷 Best French':                {type:'movie', sort:'vote_average.desc', minVotes:5000,  lang:'fr'},
+  '🇮🇳 Best Hindi / Bollywood':     {type:'movie', sort:'vote_average.desc', minVotes:5000,  lang:'hi'},
 };
 
 
@@ -251,10 +251,19 @@ async function tmdb(path, params = {}) {
 }
 
 function buildDiscoverParams(cfg = {}) {
-  // cfg comes from STATIC_SOURCES entry or filter state
   const p = {};
-  if (cfg.sort)      p['sort_by']                = cfg.sort;
-  if (cfg.minVotes)  p['vote_count.gte']          = cfg.minVotes;
+  if (cfg.sort) p['sort_by'] = cfg.sort;
+
+  // Auto minVotes theo sort để tránh phim ít vote rating ảo
+  const defaultMinVotes = {
+    'vote_average.desc': 1000,  // sort theo rating → bắt buộc nhiều vote
+    'popularity.desc':   200,   // sort theo phổ biến → ít hơn ok
+    'release_date.desc': 50,    // phim mới → chấp nhận ít vote
+    'vote_count.desc':   500,
+    'revenue.desc':      500,
+  };
+  const autoMin = defaultMinVotes[cfg.sort] || 100;
+  p['vote_count.gte'] = cfg.minVotes ?? autoMin;
   if (cfg.genre)     p['with_genres']             = cfg.genre;
   if (cfg.lang)      p['with_original_language']  = cfg.lang;
   if (cfg.year)      p[cfg.type === 'tv' ? 'first_air_date_year' : 'primary_release_year'] = cfg.year;
@@ -267,13 +276,37 @@ function buildDiscoverParams(cfg = {}) {
   return p;
 }
 
-async function discoverMovies(cfg, page = 1) {
-  const mediaType = (cfg.type === 'tv') ? 'tv' : 'movie';
-  const p = buildDiscoverParams(cfg);
-  p.page = page;
-  const data = await tmdb(`/discover/${mediaType}`, p);
-  return { results: data.results || [], totalPages: data.total_pages || 1 };
-}
+  async function discoverMovies(cfg, page = 1) {
+    const mediaType = (cfg.type === 'tv') ? 'tv' : 'movie';
+    
+    // Thử giảm dần minVotes nếu không đủ kết quả
+    const minVotesLadder = [
+      cfg.minVotes,           // lần 1: giá trị gốc
+      Math.floor((cfg.minVotes || 0) * 0.5),  // lần 2: giảm 50%
+      Math.floor((cfg.minVotes || 0) * 0.1),  // lần 3: giảm 90%
+      10,                     // lần 4: tối thiểu
+    ].filter((v, i, arr) => v !== arr[i-1] && v >= 0); // bỏ trùng
+
+    for (const minV of minVotesLadder) {
+      const p = buildDiscoverParams({ ...cfg, minVotes: minV });
+      p.page = page;
+      try {
+        const data = await tmdb(`/discover/${mediaType}`, p);
+        const results = data.results || [];
+        if (results.length >= 5) {
+          // Đủ kết quả → trả về
+          return { results, totalPages: data.total_pages || 1 };
+        }
+        // Chưa đủ → thử minVotes thấp hơn
+      } catch(e) {}
+    }
+
+    // Fallback cuối: không filter vote gì cả
+    const p = buildDiscoverParams({ ...cfg, minVotes: 0 });
+    p.page = page;
+    const data = await tmdb(`/discover/${mediaType}`, p);
+    return { results: data.results || [], totalPages: data.total_pages || 1 };
+  }
 
 function normalizeMovie(raw, mediaType = 'movie') {
   const isTV = mediaType === 'tv';
@@ -299,8 +332,21 @@ async function fetchFilterMovies() {
   if (!STATE.tmdbKey) return { movies: [], error: 'nokey' };
   try {
     const typeKey = STATE.type;
-    const typeVal = TYPE_OPTIONS[typeKey] || 'movie';
-    const mediaType = (typeVal === 'tv' || typeKey.includes('TV')) ? 'tv' : 'movie';
+    let mediaType = 'movie';
+    let forceMiniSeries = false;
+    let forceDocumentary = false;
+
+    if (typeKey === '📺 TV Series') {
+      mediaType = 'tv';
+    } else if (typeKey === '🔂 Mini Series') {
+      mediaType = 'tv';
+      forceMiniSeries = true;   // thêm with_type=3
+    } else if (typeKey === '🎬+📺 Phim lẻ + TV') {
+      mediaType = 'both';
+    } else if (typeKey === '🌍 Documentary') {
+      mediaType = 'movie';
+      forceDocumentary = true;  // thêm with_genres=99
+    }
 
     const [df, dt] = getDateRange();
     const genreVal = GENRE_OPTIONS[STATE.genre] || '';
@@ -309,10 +355,30 @@ async function fetchFilterMovies() {
     const langVal  = LANGUAGE_OPTIONS[STATE.language] || '';
     const count    = parseInt(STATE.count) || 24;
 
+    // minVotes tự động theo sort + rating
+    const baseMinVotes = {
+      'vote_average.desc': 1000,
+      'popularity.desc':   200,
+      'release_date.desc': 50,
+      'vote_count.desc':   500,
+      'revenue.desc':      500,
+      'release_date.asc':  100,
+      'original_title.asc':100,
+    }[sortVal] || 100;
+
+    // Nếu filter rating cao → tăng minVotes để tránh phim ảo
+    const ratingBoost = {
+      '9.0': 5000, '8.5': 3000, '8.0': 2000,
+      '7.5': 1000, '7.0': 500,  '6.5': 200, '6.0': 100,
+    }[ratingVal] || 0;
+
     const cfg = {
       type: mediaType,
       sort: sortVal,
+      minVotes: Math.max(baseMinVotes, ratingBoost),
     };
+    if (forceMiniSeries)  cfg.miniSeries = true;
+    if (forceDocumentary) cfg.genre = '99';
     if (ratingVal) cfg.rating = ratingVal;
     if (langVal)   cfg.lang   = langVal;
     if (genreVal)  {
@@ -393,10 +459,12 @@ async function fetchMovieDetail(movie) {
 
     if (!tmdbId) return {};
 
-    const [info, videos, similar] = await Promise.all([
+    const [info, videos, similar, keywords, releases] = await Promise.all([
       tmdb(`/${mediaType}/${tmdbId}`, { append_to_response: 'credits,images' }),
       tmdb(`/${mediaType}/${tmdbId}/videos`),
       tmdb(`/${mediaType}/${tmdbId}/similar`),
+      tmdb(`/${mediaType}/${tmdbId}/keywords`).catch(() => ({})),
+      mediaType === 'movie' ? tmdb(`/movie/${tmdbId}/release_dates`).catch(() => ({})) : Promise.resolve({}),
     ]);
 
     // IMDb ID
@@ -453,6 +521,20 @@ async function fetchMovieDetail(movie) {
       description: info.overview || movie.description || '',
       tmdb_id: String(tmdbId),
       mediaType,
+      // Production info
+      budget:   info.budget   ? `$${info.budget.toLocaleString()}`   : '',
+      revenue:  info.revenue  ? `$${info.revenue.toLocaleString()}`  : '',
+      status:   info.status   || '',
+      productionCompanies: (info.production_companies || []).slice(0, 4).map(c => c.name).join(', '),
+      productionCountries: (info.production_countries || []).map(c => c.name).join(', '),
+      spokenLanguages:     (info.spoken_languages || []).map(l => l.name).join(', '),
+      keywords: (keywords.keywords || keywords.results || []).slice(0, 12).map(k => k.name),
+
+      // Box office opening (US)
+      usRating: (() => {
+        const us = (releases.results || []).find(r => r.iso_3166_1 === 'US');
+        return us?.release_dates?.[0]?.certification || '';
+      })(),
     };
 
     STATE.detailCache[cacheKey] = detail;
@@ -1136,6 +1218,10 @@ function renderDetailBody(body, m, d) {
     actionBtns.appendChild(imdbB);
   }
   left.appendChild(actionBtns);
+  // Nút tìm Vietsub
+  const btnVS = el('button', 'btn-vietsub-find', '🎬 Tìm Vietsub');
+  btnVS.addEventListener('click', () => toggleVietsubPanel(m, left, right, btnVS));
+  left.appendChild(btnVS);
 
   // Trailer
   if (d.trailerKey) {
@@ -1256,55 +1342,64 @@ function renderDetailBody(body, m, d) {
   }
   right.appendChild(infoRows);
 
-  // Vietsub search
-  const vsSection = el('div', 'vietsub-section');
-    vsSection.appendChild(el('h4', '', '🔎 Tìm Vietsub trên Google'));
-    const vsRow = el('div', 'vietsub-search-row');
-    const vsInput = document.createElement('input');
-    vsInput.type = 'text';
-    vsInput.value = `${m.title} ${m.year} vietsub`;
-    const vsBtn = el('button', 'apply-btn', '🔍 Tìm');
-    const doVsSearch = () => {
-    const q = vsInput.value.trim();
-    if (!q) return;
-    // Xóa kết quả cũ nếu có
-    const oldFrame = vsSection.querySelector('.vietsub-iframe-wrap');
-    if (oldFrame) oldFrame.remove();
+  // ── PRODUCTION INFO ──
+  if (d.budget || d.revenue || d.productionCompanies || d.status) {
+    const prodSec = el('div', 'detail-prod-section');
+    prodSec.appendChild(el('h4', 'detail-section-title', '🎬 Thông tin sản xuất'));
+    const prodGrid = el('div', 'detail-prod-grid');
 
-    const wrap = el('div', 'vietsub-iframe-wrap');
-    wrap.style.cssText = 'margin-top:10px;border-radius:8px;overflow:hidden;border:1px solid var(--border);resize:vertical;min-height:400px;';
-    
-    const iframe = document.createElement('iframe');
-    iframe.src = `https://www.google.com/search?q=${encodeURIComponent(q)}&igu=1`;
-    iframe.style.cssText = 'width:100%;height:100%;min-height:400px;border:none;display:block;';
-    iframe.allowFullscreen = true;
-    iframe.setAttribute('allowfullscreen', '');
-    iframe.setAttribute('allow', 'fullscreen; autoplay');
-    iframe.setAttribute('allowfullscreen', 'true');
-    iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-popups allow-presentation allow-top-navigation');
-    wrap.appendChild(iframe);
-    vsSection.appendChild(wrap);
-    const fsBtn = el('button', 'apply-btn', '⛶ Toàn màn hình');
-    fsBtn.style.cssText = 'margin-top:6px;width:100%;';
-    fsBtn.addEventListener('click', () => {
-      if (wrap.requestFullscreen) wrap.requestFullscreen();
-      else if (wrap.webkitRequestFullscreen) wrap.webkitRequestFullscreen();
+    const prodItems = [
+      d.status             && ['📡 Trạng thái',    d.status],
+      d.budget             && ['💵 Kinh phí',       d.budget],
+      d.revenue            && ['💰 Doanh thu',      d.revenue],
+      d.productionCompanies&& ['🏢 Hãng sản xuất', d.productionCompanies],
+      d.productionCountries&& ['🌍 Quốc gia',      d.productionCountries],
+      d.spokenLanguages    && ['🗣️ Ngôn ngữ',       d.spokenLanguages],
+      d.usRating           && ['🔞 Xếp hạng',       d.usRating],
+    ].filter(Boolean);
+
+    prodItems.forEach(([label, val]) => {
+      const row = el('div', 'detail-prod-row');
+      row.appendChild(el('span', 'detail-prod-label', label));
+      row.appendChild(el('span', 'detail-prod-val', val));
+      prodGrid.appendChild(row);
     });
-    wrap.after(fsBtn);
-    wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-  vsBtn.addEventListener('click', doVsSearch);
-  vsInput.addEventListener('keydown', e => { if (e.key === 'Enter') doVsSearch(); });
-  vsRow.appendChild(vsInput); vsRow.appendChild(vsBtn);
-  vsSection.appendChild(vsRow);
-  const vsSugg = el('div', 'vietsub-suggests');
-  [`${m.title} vietsub full`, `${m.title} vietsub ophim`, `${m.title} vietsub phimmoi`].forEach(q => {
-    const b = el('button', 'vsub-suggest', q.replace(m.title+' ',''));
-    b.addEventListener('click', () => { vsInput.value = q; doVsSearch(); });
-    vsSugg.appendChild(b);
+    prodSec.appendChild(prodGrid);
+    right.appendChild(prodSec);
+    right.appendChild(el('hr', 'detail-divider'));
+  }
+
+  // ── KEYWORDS ──
+  if (d.keywords?.length) {
+    const kwSec = el('div', 'detail-kw-section');
+    kwSec.appendChild(el('h4', 'detail-section-title', '🏷️ Chủ đề'));
+    const kwWrap = el('div', 'detail-kw-wrap');
+    d.keywords.forEach(kw => {
+      const tag = el('span', 'detail-kw-tag', kw);
+      kwWrap.appendChild(tag);
+    });
+    kwSec.appendChild(kwWrap);
+    right.appendChild(kwSec);
+    right.appendChild(el('hr', 'detail-divider'));
+  }
+
+  // ── AWARDS (Wikipedia) ──
+  fetchAwardsFromWiki(m).then(awardsHtml => {
+    if (!awardsHtml) return;
+    const awSec = el('div', 'detail-awards-section');
+    awSec.appendChild(el('h4', 'detail-section-title', '🏆 Giải thưởng & Đề cử'));
+    awSec.innerHTML += awardsHtml;
+    // Chèn vào trước vietsub section
+    const vsEl = right.querySelector('.vietsub-section');
+    if (vsEl) right.insertBefore(awSec, vsEl);
+    else right.appendChild(awSec);
   });
-  vsSection.appendChild(vsSugg);
-  right.appendChild(vsSection);
+
+  
+
+  // Vietsub search
+  
+  
 
   right.appendChild(el('hr', 'detail-divider'));
 
@@ -1790,7 +1885,100 @@ function startBracket() {
   const contestants = pool.slice(0, 20);
   runBracket(contestants);
 }
+function toggleVietsubPanel(movie, leftCol, rightCol, btn) {
+  const existing = document.getElementById('vietsub-panel-main');
+  if (existing) {
+    existing.remove();
+    btn.textContent = '🎬 Tìm Vietsub';
+    btn.classList.remove('active');
+    return;
+  }
 
+  btn.textContent = '✕ Đóng';
+  btn.classList.add('active');
+
+  const panel = document.createElement('div');
+  panel.id = 'vietsub-panel-main';
+  panel.className = 'vietsub-panel-right';
+  panel.style.cssText = 'display:flex;flex-direction:column;height:85vh;';
+
+  const searchRow = el('div', 'vs-search-row');
+  const input = el('input', 'vs-input');
+  input.type = 'text';
+  input.value = `${movie.title} ${movie.year || ''} vietsub`;
+  const btnSearch = el('button', 'vs-btn', '🔍 Tìm');
+  searchRow.appendChild(input);
+  searchRow.appendChild(btnSearch);
+
+  const tags = el('div', 'vs-tags');
+  ['vietsub full', 'vietsub ophim', 'vietsub phimmoi', 'thuyết minh'].forEach(tag => {
+    const t = el('span', 'vs-tag', tag);
+    t.addEventListener('click', () => { input.value = `${movie.title} ${movie.year || ''} ${tag}`; doSearch(); });
+    tags.appendChild(t);
+  });
+
+  const iframeWrap = el('div', 'vs-iframe-wrap');
+  iframeWrap.style.cssText = 'position:relative;flex:1;display:flex;flex-direction:column;';
+
+  const iframeToolbar = el('div', 'vs-iframe-toolbar');
+  iframeToolbar.style.cssText = `
+    display:flex;justify-content:flex-end;gap:6px;padding:4px 6px;
+    background:#111;border-bottom:1px solid #222;flex-shrink:0;
+  `;
+
+  const btnFullscreen = el('button', 'vs-fullscreen-btn', '⛶ Toàn màn hình');
+  btnFullscreen.style.cssText = `
+    background:#1a1a2e;color:#f5c518;border:1px solid #333;
+    border-radius:4px;padding:4px 10px;cursor:pointer;font-size:0.78rem;
+    font-weight:600;
+  `;
+
+  const iframe = document.createElement('iframe');
+  iframe.className = 'vs-iframe';
+  iframe.style.cssText = 'flex:1;width:100%;min-height:600px;border:none;';
+  iframe.style.flex = '1';
+  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox');
+  iframe.setAttribute('allowfullscreen', '');
+
+  btnFullscreen.addEventListener('click', () => {
+    if (iframe.requestFullscreen) iframe.requestFullscreen();
+    else if (iframe.webkitRequestFullscreen) iframe.webkitRequestFullscreen();
+    else if (iframe.mozRequestFullScreen) iframe.mozRequestFullScreen();
+    else {
+      // Fallback: mở tab mới
+      window.open(iframe.src, '_blank');
+    }
+  });
+
+  iframeToolbar.appendChild(btnFullscreen);
+
+  // Nút mở tab mới
+  const btnNewTab = el('button', '', '↗ Mở tab mới');
+  btnNewTab.style.cssText = `
+    background:#1a1a2e;color:#aaa;border:1px solid #333;
+    border-radius:4px;padding:4px 10px;cursor:pointer;font-size:0.78rem;
+  `;
+  btnNewTab.addEventListener('click', () => window.open(iframe.src, '_blank'));
+  iframeToolbar.appendChild(btnNewTab);
+
+  iframeWrap.appendChild(iframeToolbar);
+  iframeWrap.appendChild(iframe);
+
+  panel.appendChild(searchRow);
+  panel.appendChild(tags);
+  panel.appendChild(iframeWrap);
+
+  // Chèn vào đầu cột phải
+  rightCol.insertBefore(panel, rightCol.firstChild);
+
+  const doSearch = () => {
+    iframe.src = `https://www.google.com/search?q=${encodeURIComponent(input.value.trim())}&igu=1`;
+  };
+
+  btnSearch.addEventListener('click', doSearch);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  doSearch();
+}
 function runBracket(contestants) {
   const overlay = $('bracket-overlay');
   overlay.classList.remove('hidden');
@@ -6160,4 +6348,267 @@ function bayesianRating(rating, voteCount, minVotes = 1000, avgRating = 6.5) {
   const v = voteCount || 0;
   const R = parseFloat(rating) || 0;
   return (v / (v + minVotes)) * R + (minVotes / (v + minVotes)) * avgRating;
+}
+
+
+// ── Fetch awards từ Wikipedia ──
+async function fetchAwardsFromWiki(movie) {
+  try {
+    // Bước 1: Tìm trang Wikipedia
+    const searchRes = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(movie.title + ' film ' + (movie.year||''))}&format=json&origin=*&srlimit=5`
+    );
+    const searchData = await searchRes.json();
+    const best = (searchData.query?.search || [])
+      .find(p => p.title.toLowerCase().includes(movie.title.toLowerCase().split(':')[0].trim()));
+    if (!best) return '';
+
+    // Bước 2: Fetch HTML của section Accolades
+    const secRes = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(best.title)}&prop=sections&format=json&origin=*`
+    );
+    const sections = (await secRes.json()).parse?.sections || [];
+    const awardSec = sections.find(s =>
+      /accolade|award/i.test(s.line)
+    );
+    if (!awardSec) return '';
+
+    // Bước 3: Fetch HTML của section đó
+    const htmlRes = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(best.title)}&prop=text&section=${awardSec.index}&format=json&origin=*`
+    );
+    const html = (await htmlRes.json()).parse?.text?.['*'] || '';
+    if (!html) return '';
+
+    // Bước 4: Parse bảng HTML
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    const groups = {};
+    let currentShow = '';
+
+    // Wikipedia awards table: mỗi row có class "award-row" hoặc td[rowspan]
+    const rows = doc.querySelectorAll('tr');
+    rows.forEach(row => {
+      const cells = row.querySelectorAll('th, td');
+      if (!cells.length) return;
+
+      const text = Array.from(cells).map(c => c.textContent.trim());
+
+      // Row có rowspan = tên ceremony
+      const showCell = row.querySelector('td[rowspan], th[rowspan]');
+      if (showCell) {
+        const t = showCell.textContent.trim();
+        if (t.length > 2 && t.length < 60) currentShow = t;
+      }
+
+      if (!currentShow) return;
+
+      // Tìm Won/Nominated trong cells
+      const resultCell = Array.from(cells).find(c =>
+        /won|nominated/i.test(c.textContent)
+      );
+      if (!resultCell) return;
+
+      const isWon = /won/i.test(resultCell.textContent);
+
+      // Tìm category — thường là cell có "Best"
+      const catCell = Array.from(cells).find(c =>
+        /best\s+\w/i.test(c.textContent) && c !== resultCell
+      );
+      const category = catCell?.textContent.trim() || text.find(t => /best\s+\w/i.test(t)) || '';
+      if (!category || category.length < 4) return;
+
+      const show = AWARD_SHOWS_NORMALIZE(currentShow);
+      if (!groups[show]) groups[show] = { won: [], nom: [] };
+      const arr = isWon ? groups[show].won : groups[show].nom;
+      if (!arr.includes(category) && arr.length < 10) arr.push(category);
+    });
+
+    const entries = Object.entries(groups).filter(([,d]) => d.won.length + d.nom.length > 0);
+    if (!entries.length) return '';
+
+    let result = '<div class="awards-groups">';
+    entries.slice(0, 6).forEach(([show, data]) => {
+      result += `<div class="award-group">
+        <div class="award-group-header">
+          <span class="award-group-name">${sanitize(show)}</span>
+          <span class="award-group-stats">
+            ${data.won.length ? `<span class="aw-won">🏆 ${data.won.length} Won</span>` : ''}
+            ${data.nom.length ? `<span class="aw-nom">🎗️ ${data.nom.length} Nom</span>` : ''}
+          </span>
+        </div>
+        <div class="award-group-items">
+          ${data.won.slice(0,3).map(c=>`<span class="aw-item aw-item-won">🏆 ${sanitize(c)}</span>`).join('')}
+          ${data.nom.slice(0,3).map(c=>`<span class="aw-item aw-item-nom">🎗️ ${sanitize(c)}</span>`).join('')}
+        </div>
+        ${(data.won.length + data.nom.length > 6) ? `<div class="aw-more">+${data.won.length + data.nom.length - 6} đề cử khác</div>` : ''}
+      </div>`;
+    });
+    result += '</div>';
+    result += `<p style="font-size:0.72rem;color:var(--gray);margin-top:8px;">
+      Nguồn: <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(best.title)}" 
+      target="_blank" style="color:var(--gold)">Wikipedia</a></p>`;
+    return result;
+  } catch(e) { console.log('awards err:', e); return ''; }
+}
+
+function AWARD_SHOWS_NORMALIZE(name) {
+  if (/academy|oscar/i.test(name))   return 'Academy Awards (Oscar)';
+  if (/golden globe/i.test(name))    return 'Golden Globe Awards';
+  if (/bafta/i.test(name))           return 'BAFTA Awards';
+  if (/screen actors|sag/i.test(name)) return 'Screen Actors Guild Awards';
+  if (/critics.?choice/i.test(name)) return "Critics' Choice Awards";
+  if (/saturn/i.test(name))          return 'Saturn Awards';
+  if (/hugo/i.test(name))            return 'Hugo Awards';
+  if (/mtv/i.test(name))             return 'MTV Movie Awards';
+  if (/annie/i.test(name))           return 'Annie Awards';
+  if (/empire/i.test(name))          return 'Empire Awards';
+  return name.length > 40 ? name.slice(0, 40) + '…' : name;
+}
+
+// ── Generate Share Card bằng Canvas ──
+function generateShareCard(movie, detail) {
+  const canvas = document.createElement('canvas');
+  canvas.width  = 800;
+  canvas.height = 420;
+  const ctx = canvas.getContext('2d');
+
+  const draw = (posterImg) => {
+    // Background gradient
+    ctx.fillStyle = '#080c14';
+    ctx.fillRect(0, 0, 800, 420);
+
+    // Poster blur background
+    if (posterImg) {
+      ctx.save();
+      ctx.globalAlpha = 0.15;
+      ctx.filter = 'blur(20px)';
+      ctx.drawImage(posterImg, -40, -40, 880, 500);
+      ctx.restore();
+      ctx.filter = 'none';
+    }
+
+    // Dark overlay
+    const grad = ctx.createLinearGradient(0, 0, 800, 0);
+    grad.addColorStop(0,   'rgba(8,12,20,0.3)');
+    grad.addColorStop(0.35,'rgba(8,12,20,0.7)');
+    grad.addColorStop(1,   'rgba(8,12,20,0.95)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 800, 420);
+
+    // Poster
+    if (posterImg) {
+      ctx.save();
+      ctx.beginPath();
+      roundRect(ctx, 30, 30, 240, 360, 10);
+      ctx.clip();
+      ctx.drawImage(posterImg, 30, 30, 240, 360);
+      ctx.restore();
+      // Border
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      roundRect(ctx, 30, 30, 240, 360, 10);
+      ctx.stroke();
+    }
+
+    // Content
+    const cx = 300;
+
+    // Title
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 32px "DM Sans", sans-serif';
+    const title = movie.title.length > 28 ? movie.title.slice(0,26)+'…' : movie.title;
+    ctx.fillText(title, cx, 80);
+
+    // Year + Runtime
+    ctx.fillStyle = '#7a8fa8';
+    ctx.font = '16px "DM Sans", sans-serif';
+    ctx.fillText(`${movie.year || ''}  ·  ${detail?.runtime || ''}  ·  ${movie.genre?.split(',')[0] || ''}`, cx, 112);
+
+    // Rating
+    const rBg = ratingBg(movie.rating);
+    ctx.fillStyle = rBg;
+    roundRect(ctx, cx, 128, 90, 34, 6);
+    ctx.fill();
+    ctx.fillStyle = ratingFg(movie.rating);
+    ctx.font = 'bold 18px "DM Sans", sans-serif';
+    ctx.fillText(`⭐ ${movie.rating}`, cx + 10, 151);
+
+    // Director
+    if (detail?.director) {
+      ctx.fillStyle = '#e8a020';
+      ctx.font = '14px "DM Sans", sans-serif';
+      ctx.fillText(`🎬 ${detail.director}`, cx, 188);
+    }
+
+    // Description
+    ctx.fillStyle = '#a0aec0';
+    ctx.font = '14px "DM Sans", sans-serif';
+    const desc = (movie.description || '').slice(0, 180);
+    wrapText(ctx, desc, cx, 218, 460, 22);
+
+    // Production info
+    if (detail?.budget || detail?.revenue) {
+      ctx.fillStyle = '#4a5568';
+      ctx.font = '12px "DM Sans", sans-serif';
+      const info = [detail.budget && `💵 ${detail.budget}`, detail.revenue && `💰 ${detail.revenue}`].filter(Boolean).join('  ·  ');
+      ctx.fillText(info, cx, 330);
+    }
+
+    // Watermark
+    ctx.fillStyle = 'rgba(245,197,24,0.6)';
+    ctx.font = 'bold 13px "DM Sans", sans-serif';
+    ctx.fillText('IMDb What to Watch', cx, 390);
+
+    // Download
+    const link = document.createElement('a');
+    link.download = `${movie.title.replace(/[^a-z0-9]/gi,'_')}_share.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    showToast('Share card đã được tải xuống!', 'add', '🖼️');
+  };
+
+  if (movie.poster) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload  = () => draw(img);
+    img.onerror = () => draw(null);
+    img.src = movie.poster;
+  } else {
+    draw(null);
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+function wrapText(ctx, text, x, y, maxW, lineH) {
+  const words = text.split(' ');
+  let line = '';
+  let lines = 0;
+  for (const word of words) {
+    const test = line + word + ' ';
+    if (ctx.measureText(test).width > maxW && line) {
+      ctx.fillText(line, x, y + lines * lineH);
+      line = word + ' ';
+      lines++;
+      if (lines >= 4) { ctx.fillText(line + '…', x, y + lines * lineH); return; }
+    } else {
+      line = test;
+    }
+  }
+  ctx.fillText(line, x, y + lines * lineH);
 }
