@@ -21,6 +21,7 @@
     <button id="btn-export" class="hdr-btn" title="Xuất danh sách">📥 Export</button>
     <button id="btn-tmdb-key" class="hdr-btn key-btn" title="Nhập TMDB API Key">🔑 TMDB Key</button>
     <button id="btn-refresh" class="hdr-btn accent-btn" title="Tải lại">↻ Refresh</button>
+    <button id="btn-recommend" class="hdr-btn" title="Gợi ý phim" style="background:#1a2a4a;color:#4488ff;border-color:#1a2a4a;">🤖 For You</button>
     <button id="btn-random" class="hdr-btn gold-btn" title="Chọn ngẫu nhiên">🎲 Random</button>
   </div>
   <!-- Export dropdown -->
@@ -52,6 +53,8 @@
   <button class="tab-btn" data-tab="cinema">🎬 Rạp chiếu</button>
   <button class="tab-btn" data-tab="onthisday">📅 Ngày này năm xưa</button>
   <button class="tab-btn" data-tab="bracket">🏆 Bracket</button>
+  <button class="tab-btn" data-tab="newspaper">📰 Báo Phim</button>
+  
 </nav>
 
 <!-- ══════════════════════════════════ FILTER PANEL ══════════════════════════════════ -->
@@ -189,6 +192,9 @@
       <p class="bracket-hint">Phim được lấy từ: danh sách đang xem + Watchlist + Rạp chiếu</p>
     </div>
   </div>
+  <div id="tab-newspaper" class="tab-page hidden">
+      <div id="newspaper-root"></div>
+    </div>
 </main>
 
 <!-- ══════════════════════════════════ DETAIL PAGE ══════════════════════════════════ -->
