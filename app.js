@@ -554,8 +554,8 @@ async function fetchPersonDetail(name) {
     const castMovies = (data.movie_credits?.cast || [])
       .filter(m => m.title && m.release_date && !isJunk(m.title) && (m.vote_count||0) >= 100)
       .map(m => ({ ...normalizeMovie(m,'movie'), vote_count: m.vote_count||0, character: m.character||'' }))
-      .sort((a,b) => parseFloat(b.rating) - parseFloat(a.rating))
-      .slice(0, 20);
+      .sort((a,b) => parseFloat(b.rating) - parseFloat(a.rating));
+      // bỏ .slice(0, 20) — hiển thị toàn bộ
 
     const castTV = (data.tv_credits?.cast || [])
       .filter(m => m.name && m.first_air_date && !isJunk(m.name) && (m.vote_count||0) >= 50)
@@ -575,7 +575,7 @@ async function fetchPersonDetail(name) {
       biography: data.biography || '',
       known_for: data.known_for_department || '',
       directed,
-      filmography: castMovies.concat(castTV).slice(0, 20),
+      filmography: castMovies.concat(castTV),
       isDirector: directed.length > 0,
     };
   } catch(e) {
@@ -1394,6 +1394,7 @@ function hideDetailPage() {
 ══════════════════════════════════════════════════════════════ */
 
 async function showActorPage(actor) {
+  STATE.currentActor = actor;
   STATE.preActorDetailMovie = STATE.currentDetailMovie;
   const page = $('actor-page');
   const body = $('actor-body');
@@ -1475,12 +1476,17 @@ function renderActorBody(body, actorBase, person, isDirector = false) {
     const statsBar = el('div', 'stats-bar');
     const ratings = films.map(m => parseFloat(m.rating)).filter(v => !isNaN(v) && v > 0);
     const avgR = ratings.length ? (ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1) : 'N/A';
-    const best = films.reduce((a,b) => (parseFloat(a.rating)||0) >= (parseFloat(b.rating)||0) ? a : b);
+    const best = films
+      .filter(m => (m.vote_count || 0) >= 10)
+      .reduce((a, b) => 
+        bayesianRating(b.rating, b.vote_count) > bayesianRating(a.rating, a.vote_count) ? b : a
+      , films[0]);
+    const newest = films.reduce((a,b) => (parseInt(b.year)||0) > (parseInt(a.year)||0) ? b : a);
     [
       ['🎬 Tổng phim', String(films.length)],
       ['⭐ Rating TB', avgR],
       ['🏆 Hay nhất', (best.title||'').slice(0,22)],
-      ['📅 Mới nhất', films[0]?.year || ''],
+      ['📅 Mới nhất', newest.year || ''],
     ].forEach(([lbl, val]) => {
       const cell = el('div','stat-cell');
       cell.appendChild(el('div','stat-val', val));
@@ -1622,28 +1628,56 @@ function renderActorBody(body, actorBase, person, isDirector = false) {
 
   
 
-  // Filmography
-  if (films?.length) {
-    const filmSec = el('div','h-scroll-section');
-    filmSec.appendChild(el('h4','', `🎬 Filmography — ${films.length} phim`));
-    const scroll = el('div','h-scroll');
-    films.forEach(fm => {
-      const card = el('div','sim-card');
-      const poster = el('div','sim-poster', fm.poster ? '' : '🎬');
-      if (fm.poster) { const img = document.createElement('img'); img.src = fm.poster; poster.appendChild(img); }
-      card.appendChild(poster);
-      const info = el('div','sim-info');
-      info.appendChild(el('div','sim-title', fm.title));
-      info.appendChild(el('div','sim-meta', `⭐${fm.rating}  ${fm.year}` + (fm.character ? `  "${fm.character.slice(0,16)}"` : '')));
-      card.appendChild(info);
-      card.addEventListener('click', () => {
-      STATE.pageStack.push({ type: 'director', name: STATE.currentDirectorName });
-      showDetailPage({ ...fm });
-    });
-      scroll.appendChild(card);
-    });
-    filmSec.appendChild(scroll);
-    body.appendChild(filmSec);
+  // Filmography — nhóm theo thập kỷ nếu nhiều phim
+  if (films?.length && !isDirector) {
+    if (films.length > 15) {
+      // Nhóm theo thập kỷ
+      const filmSec = el('div', '');
+      filmSec.appendChild(el('h4', '', `🎬 Filmography — ${films.length} phim`));
+      const byDecade = {};
+      films.forEach(m => {
+        const dec = m.year ? Math.floor(parseInt(m.year)/10)*10 + 's' : 'Unknown';
+        if (!byDecade[dec]) byDecade[dec] = [];
+        byDecade[dec].push(m);
+      });
+      Object.entries(byDecade).sort((a,b) => parseInt(b[0]) - parseInt(a[0])).forEach(([dec, decFilms]) => {
+        filmSec.appendChild(el('div', 'decade-label', `📅 ${dec}`));
+        const scroll = el('div', 'h-scroll');
+        decFilms.sort((a,b) => (parseInt(b.year)||0) - (parseInt(a.year)||0)).forEach(fm => {
+          const card = el('div','sim-card');
+          const poster = el('div','sim-poster', fm.poster ? '' : '🎬');
+          if (fm.poster) { const img = document.createElement('img'); img.src = fm.poster; poster.appendChild(img); }
+          card.appendChild(poster);
+          const info = el('div','sim-info');
+          info.appendChild(el('div','sim-title', fm.title));
+          info.appendChild(el('div','sim-meta', `⭐${fm.rating}  ${fm.year}` + (fm.character ? `  "${fm.character.slice(0,16)}"` : '')));
+          card.appendChild(info);
+          card.addEventListener('click', () => showDetailPage({ ...fm }));
+          scroll.appendChild(card);
+        });
+        filmSec.appendChild(scroll);
+      });
+      body.appendChild(filmSec);
+    } else {
+      // Ít phim → scroll ngang như cũ
+      const filmSec = el('div','h-scroll-section');
+      filmSec.appendChild(el('h4','', `🎬 Filmography — ${films.length} phim`));
+      const scroll = el('div','h-scroll');
+      films.forEach(fm => {
+        const card = el('div','sim-card');
+        const poster = el('div','sim-poster', fm.poster ? '' : '🎬');
+        if (fm.poster) { const img = document.createElement('img'); img.src = fm.poster; poster.appendChild(img); }
+        card.appendChild(poster);
+        const info = el('div','sim-info');
+        info.appendChild(el('div','sim-title', fm.title));
+        info.appendChild(el('div','sim-meta', `⭐${fm.rating}  ${fm.year}`));
+        card.appendChild(info);
+        card.addEventListener('click', () => showDetailPage({ ...fm }));
+        scroll.appendChild(card);
+      });
+      filmSec.appendChild(scroll);
+      body.appendChild(filmSec);
+    }
   }
 }
 
@@ -2915,7 +2949,7 @@ function switchTab(tab) {
 
   // Show/hide panels
   const grid = $('movie-grid');
-  ['tab-cinema','tab-onthisday','tab-bracket','tab-newspaper'].forEach(id => $(`${id}`)?.classList.add('hidden'));
+  ['tab-cinema','tab-onthisday','tab-bracket','tab-newspaper','tab-screening', 'tab-livefeed'].forEach(id => $(`${id}`)?.classList.add('hidden'));
   grid.style.display = '';
 
   // Filter panel
@@ -2947,6 +2981,16 @@ function switchTab(tab) {
     grid.style.display = 'none';
     $('tab-newspaper').classList.remove('hidden');
     loadNewspaper();
+  } else if (tab === 'screening') {
+    fp.style.display = 'none';
+    grid.style.display = 'none';
+    $('tab-screening').classList.remove('hidden');
+    loadScreeningRoom();
+  } else if (tab === 'livefeed') {
+    fp.style.display = 'none';
+    grid.style.display = 'none';
+    $('tab-livefeed').classList.remove('hidden');
+    loadLiveFeed();
   }
 }
 
@@ -3182,6 +3226,13 @@ function bindEvents() {
     } else if (prev.type === 'onthisday') {
       switchTab('onthisday');
     }
+  });
+
+  $('btn-universe-actor').addEventListener('click', () => {
+    if (STATE.currentActor) showCinematicUniverse(STATE.currentActor.name, 'person');
+  });
+  $('btn-universe-director').addEventListener('click', () => {
+    if (STATE.currentDirectorName) showCinematicUniverse(STATE.currentDirectorName, 'person');
   });
   $('btn-back-actor').addEventListener('click', () => {
     $('actor-page').classList.add('hidden');
@@ -4712,4 +4763,1401 @@ async function showRecommendPanel() {
 
   // Click outside to close
   panel.addEventListener('click', e => { if (e.target === panel) panel.remove(); });
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   SECTION 27 — PHÒNG CHIẾU RIÊNG (Private Screening Room)
+══════════════════════════════════════════════════════════════ */
+
+const SCREENING_DAYS = [
+  {
+    day: 1, // Thứ 2
+    label: 'Thứ Hai',
+    theme: '💪 Motivational Monday',
+    mood: 'Khởi đầu tuần mới với những câu chuyện truyền cảm hứng',
+    emoji: '💪',
+    color: '#e67e22',
+    genres: ['18', '36'], // Drama, History
+    sort: 'vote_average.desc',
+    minVotes: 5000,
+    hour: '20:00',
+    tagline: 'Bắt đầu tuần mới với nguồn cảm hứng mạnh mẽ',
+  },
+  {
+    day: 2, // Thứ 3
+    label: 'Thứ Ba',
+    theme: '🕵️ Thriller Tuesday',
+    mood: 'Đêm thứ 3 hồi hộp với những bộ phim giật gân',
+    emoji: '🕵️',
+    color: '#2c3e50',
+    genres: ['53', '9648'], // Thriller, Mystery
+    sort: 'popularity.desc',
+    minVotes: 3000,
+    hour: '21:00',
+    tagline: 'Giữ nhịp tim với những bí ẩn chưa được giải đáp',
+  },
+  {
+    day: 3, // Thứ 4
+    label: 'Thứ Tư',
+    theme: '🌿 Chill Wednesday',
+    mood: 'Giữa tuần thư giãn với phim nhẹ nhàng, hài hước',
+    emoji: '🌿',
+    color: '#27ae60',
+    genres: ['35', '10751'], // Comedy, Family
+    sort: 'vote_average.desc',
+    minVotes: 2000,
+    hour: '19:30',
+    tagline: 'Xả hơi với những khoảnh khắc vui vẻ, ấm áp',
+  },
+  {
+    day: 4, // Thứ 5
+    label: 'Thứ Năm',
+    theme: '🚀 Sci-Fi Thursday',
+    mood: 'Khám phá vũ trụ và tương lai với Sci-Fi đỉnh cao',
+    emoji: '🚀',
+    color: '#2980b9',
+    genres: ['878', '14'], // Sci-Fi, Fantasy
+    sort: 'vote_average.desc',
+    minVotes: 4000,
+    hour: '20:30',
+    tagline: 'Vượt giới hạn trí tưởng tượng với Khoa học viễn tưởng',
+  },
+  {
+    day: 5, // Thứ 6
+    label: 'Thứ Sáu',
+    theme: '🌏 World Cinema Friday',
+    mood: 'Cuối tuần khám phá điện ảnh thế giới — Á Đông, Âu',
+    emoji: '🌏',
+    color: '#8e44ad',
+    langs: ['ko', 'ja', 'fr', 'it', 'es'],
+    sort: 'vote_average.desc',
+    minVotes: 3000,
+    hour: '20:00',
+    tagline: 'Hành trình qua những nền điện ảnh tinh tế nhất thế giới',
+  },
+  {
+    day: 6, // Thứ 7
+    label: 'Thứ Bảy',
+    theme: '🔥 Blockbuster Saturday',
+    mood: 'Thứ 7 bom tấn! Action, Adventure không ngừng nghỉ',
+    emoji: '🔥',
+    color: '#e50914',
+    genres: ['28', '12'], // Action, Adventure
+    sort: 'popularity.desc',
+    minVotes: 5000,
+    hour: '21:30',
+    tagline: 'Tiệc bom tấn cuối tuần — màn ảnh cháy hết mình',
+  },
+  {
+    day: 0, // Chủ nhật
+    label: 'Chủ Nhật',
+    theme: '❤️ Classic Sunday',
+    mood: 'Chủ nhật bình yên với những kiệt tác điện ảnh mọi thời đại',
+    emoji: '❤️',
+    color: '#c0392b',
+    sort: 'vote_average.desc',
+    minVotes: 20000,
+    yearTo: 2005,
+    hour: '20:00',
+    tagline: 'Cảm nhận sức sống vĩnh cửu của những tác phẩm bất hủ',
+  },
+];
+
+// Seed random dựa theo ngày để mỗi ngày có 1 phim cố định
+function seededRandIdx(seed, max) {
+  let x = seed;
+  x = ((x >> 16) ^ x) * 0x45d9f3b;
+  x = ((x >> 16) ^ x) * 0x45d9f3b;
+  x = (x >> 16) ^ x;
+  return Math.abs(x) % max;
+}
+
+async function fetchScreeningMovie(cfg, dateSeed) {
+  if (!STATE.tmdbKey) return null;
+  try {
+    const params = {
+      sort_by: cfg.sort,
+      'vote_count.gte': cfg.minVotes || 1000,
+      page: 1,
+    };
+    if (cfg.genres) params['with_genres'] = cfg.genres.join(',');
+    if (cfg.yearTo) params['primary_release_date.lte'] = cfg.yearTo + '-12-31';
+
+    let mediaType = 'movie';
+
+    // World Cinema: pick a random language for the day
+    if (cfg.langs) {
+      const langIdx = seededRandIdx(dateSeed + 77, cfg.langs.length);
+      params['with_original_language'] = cfg.langs[langIdx];
+    }
+
+    const data = await tmdb(`/discover/${mediaType}`, params);
+    const results = data.results || [];
+    if (!results.length) return null;
+
+    // Pick deterministically using date seed
+    const idx = seededRandIdx(dateSeed, Math.min(results.length, 20));
+    return normalizeMovie(results[idx], mediaType);
+  } catch(e) {
+    return null;
+  }
+}
+
+async function loadScreeningRoom() {
+  const root = $('screening-root');
+  if (!root) return;
+
+  root.innerHTML = `
+    <div class="sr-loading">
+      <div class="sr-loading-reel">🎞️</div>
+      <div class="sr-loading-text">Đang chọn phim cho tuần này...</div>
+    </div>`;
+
+  if (!STATE.tmdbKey) {
+    root.innerHTML = `
+      <div class="sr-no-key">
+        <div class="sr-no-key-icon">🎬</div>
+        <h3>Cần TMDB Key</h3>
+        <p>Nhập TMDB Key để kích hoạt Phòng Chiếu Riêng</p>
+        <button onclick="openTmdbModal()" class="sr-key-btn">🔑 Nhập TMDB Key</button>
+      </div>`;
+    return;
+  }
+
+  const today = new Date();
+  const todayDow = today.getDay(); // 0=Sun, 1=Mon...
+
+  // Build date seed cho mỗi ngày trong tuần (dựa theo tuần hiện tại)
+  // Monday = start of week
+  const monday = new Date(today);
+  const diffToMon = (todayDow === 0 ? -6 : 1 - todayDow);
+  monday.setDate(today.getDate() + diffToMon);
+
+  // Fetch tất cả 7 ngày song song
+  const weekMovies = await Promise.all(
+    SCREENING_DAYS.map(async (cfg) => {
+      const d = new Date(monday);
+      const daysFromMon = cfg.day === 0 ? 6 : cfg.day - 1;
+      d.setDate(monday.getDate() + daysFromMon);
+      const dateSeed = d.getFullYear() * 10000 + (d.getMonth()+1) * 100 + d.getDate() + cfg.day * 999;
+      const movie = await fetchScreeningMovie(cfg, dateSeed);
+      return { cfg, movie, date: new Date(d) };
+    })
+  );
+
+  // Sort by day of week starting from Monday
+  const ordered = [1,2,3,4,5,6,0].map(dow =>
+    weekMovies.find(w => w.cfg.day === dow)
+  ).filter(Boolean);
+
+  renderScreeningRoom(root, ordered, today);
+}
+
+function renderScreeningRoom(root, weekData, today) {
+  root.innerHTML = '';
+
+  // ── HEADER ──
+  const header = document.createElement('div');
+  header.className = 'sr-header';
+  const weekStr = (() => {
+    const mon = weekData[0]?.date;
+    const sun = weekData[6]?.date;
+    if (!mon || !sun) return '';
+    return `${mon.getDate()}/${mon.getMonth()+1} — ${sun.getDate()}/${sun.getMonth()+1}/${sun.getFullYear()}`;
+  })();
+  header.innerHTML = `
+    <div class="sr-header-left">
+      <div class="sr-header-icon">🎬</div>
+      <div>
+        <h2 class="sr-header-title">Phòng Chiếu Riêng</h2>
+        <div class="sr-header-sub">Lịch chiếu tuần này · ${weekStr}</div>
+      </div>
+    </div>
+    <button class="sr-refresh-btn" id="sr-refresh-btn">🔄 Đổi danh sách</button>`;
+  root.appendChild(header);
+
+
+  // ── TODAY'S SPOTLIGHT ──
+  const todayEntry = weekData.find(w => w.date.toDateString() === today.toDateString());
+  if (todayEntry?.movie) {
+    const spotlight = document.createElement('div');
+    spotlight.className = 'sr-spotlight';
+    spotlight.style.setProperty('--spot-color', todayEntry.cfg.color);
+
+    const m = todayEntry.movie;
+    const raw = null; // we don't have backdrop here
+
+    spotlight.innerHTML = `
+      <div class="sr-spot-inner">
+        <div class="sr-spot-left">
+          ${m.poster ? `<img class="sr-spot-poster" src="${m.poster}" alt="${m.title}" />` : '<div class="sr-spot-no-poster">🎬</div>'}
+        </div>
+        <div class="sr-spot-right">
+          <div class="sr-spot-kicker">🎬 PHIM HÔM NAY · ${todayEntry.cfg.theme}</div>
+          <h3 class="sr-spot-title">${m.title}</h3>
+          <div class="sr-spot-meta">
+            <span class="sr-spot-rating" style="background:${ratingBg(m.rating)};color:${ratingFg(m.rating)}">⭐ ${m.rating}/10</span>
+            <span>${m.year}</span>
+            <span>${(m.genre||'').split(',')[0]}</span>
+          </div>
+          <div class="sr-spot-mood">${todayEntry.cfg.mood}</div>
+          <p class="sr-spot-desc">${(m.description||'').slice(0, 200)}...</p>
+          <div class="sr-spot-showtime">
+            <span class="sr-spot-time-icon">🕐</span>
+            Suất chiếu gợi ý hôm nay: <strong>${todayEntry.cfg.hour}</strong>
+          </div>
+          <button class="sr-spot-btn" id="sr-spot-read">📰 Đọc bài phê bình</button>
+        </div>
+      </div>`;
+
+    root.appendChild(spotlight);
+
+    spotlight.querySelector('#sr-spot-read').addEventListener('click', () => {
+      openNewspaperArticle(todayEntry.movie);
+    });
+  }
+
+  // ── WEEK GRID ──
+  const grid = document.createElement('div');
+  grid.className = 'sr-week-grid';
+
+  weekData.forEach(({ cfg, movie, date }) => {
+    const isToday = date.toDateString() === today.toDateString();
+    const isPast = date < today && !isToday;
+    const isFuture = date > today && !isToday;
+
+    const col = document.createElement('div');
+    col.className = `sr-day-col${isToday ? ' sr-today' : ''}${isPast ? ' sr-past' : ''}`;
+
+    // Day header
+    const dayHdr = document.createElement('div');
+    dayHdr.className = 'sr-day-header';
+    dayHdr.style.setProperty('--day-color', cfg.color);
+    dayHdr.innerHTML = `
+      <div class="sr-day-emoji">${cfg.emoji}</div>
+      <div class="sr-day-label">${cfg.label}</div>
+      <div class="sr-day-date">${date.getDate()}/${date.getMonth()+1}</div>
+      ${isToday ? '<div class="sr-today-badge">HÔM NAY</div>' : ''}`;
+    col.appendChild(dayHdr);
+
+    // Theme strip
+    const theme = document.createElement('div');
+    theme.className = 'sr-theme-strip';
+    theme.style.background = cfg.color + '22';
+    theme.style.borderColor = cfg.color + '44';
+    theme.innerHTML = `<span style="color:${cfg.color}">${cfg.theme}</span>`;
+    col.appendChild(theme);
+
+    // Movie card
+    if (movie) {
+      const card = document.createElement('div');
+      card.className = 'sr-movie-card';
+      card.style.setProperty('--day-color', cfg.color);
+
+      const posterWrap = document.createElement('div');
+      posterWrap.className = 'sr-poster-wrap';
+      if (movie.poster) {
+        const img = document.createElement('img');
+        img.src = movie.poster;
+        img.alt = movie.title;
+        posterWrap.appendChild(img);
+      } else {
+        posterWrap.innerHTML = '<div class="sr-no-poster">🎬</div>';
+      }
+
+      // Overlay khi hover
+      const overlay = document.createElement('div');
+      overlay.className = 'sr-poster-overlay';
+      overlay.innerHTML = `<div class="sr-play-btn">▶ Đọc bài</div>`;
+      posterWrap.appendChild(overlay);
+      card.appendChild(posterWrap);
+
+      const info = document.createElement('div');
+      info.className = 'sr-movie-info';
+
+      const titleEl = document.createElement('div');
+      titleEl.className = 'sr-movie-title';
+      titleEl.textContent = movie.title;
+      info.appendChild(titleEl);
+
+      const metaEl = document.createElement('div');
+      metaEl.className = 'sr-movie-meta';
+      metaEl.innerHTML = `<span class="sr-rating" style="background:${ratingBg(movie.rating)};color:${ratingFg(movie.rating)}">⭐ ${movie.rating}</span>
+        <span class="sr-year">${movie.year || ''}</span>`;
+      info.appendChild(metaEl);
+
+      const genreEl = document.createElement('div');
+      genreEl.className = 'sr-movie-genre';
+      genreEl.textContent = (movie.genre || '').split(',')[0].trim();
+      info.appendChild(genreEl);
+
+      // Giờ chiếu gợi ý
+      const timeEl = document.createElement('div');
+      timeEl.className = 'sr-showtime';
+      timeEl.innerHTML = `<span class="sr-showtime-icon">🕐</span> Giờ chiếu gợi ý: <strong>${cfg.hour}</strong>`;
+      info.appendChild(timeEl);
+
+      card.appendChild(info);
+
+      // Click → mở newspaper article
+      card.addEventListener('click', () => {
+        openNewspaperArticle(movie);
+      });
+
+      col.appendChild(card);
+
+      // Tagline
+      const tagEl = document.createElement('div');
+      tagEl.className = 'sr-tagline';
+      tagEl.textContent = cfg.tagline;
+      col.appendChild(tagEl);
+
+    } else {
+      // No movie found
+      const empty = document.createElement('div');
+      empty.className = 'sr-no-movie';
+      empty.innerHTML = `<div>🎬</div><p>Đang tìm phim...</p>`;
+      col.appendChild(empty);
+    }
+
+    grid.appendChild(col);
+  });
+
+  root.appendChild(grid);
+
+  
+  // Refresh button
+  root.querySelector('#sr-refresh-btn')?.addEventListener('click', async () => {
+    // Bump a re-roll seed stored in memory
+    STATE._srRerollCount = (STATE._srRerollCount || 0) + 1;
+    await loadScreeningRoomWithOffset(STATE._srRerollCount);
+  });
+}
+
+async function loadScreeningRoomWithOffset(offset) {
+  const root = $('screening-root');
+  root.innerHTML = `
+    <div class="sr-loading">
+      <div class="sr-loading-reel">🎞️</div>
+      <div class="sr-loading-text">Đang chọn danh sách phim mới...</div>
+    </div>`;
+
+  const today = new Date();
+  const todayDow = today.getDay();
+  const monday = new Date(today);
+  const diffToMon = (todayDow === 0 ? -6 : 1 - todayDow);
+  monday.setDate(today.getDate() + diffToMon);
+
+  const weekMovies = await Promise.all(
+    SCREENING_DAYS.map(async (cfg) => {
+      const d = new Date(monday);
+      const daysFromMon = cfg.day === 0 ? 6 : cfg.day - 1;
+      d.setDate(monday.getDate() + daysFromMon);
+      // Offset changes the seed to get different movies
+      const dateSeed = d.getFullYear() * 10000 + (d.getMonth()+1) * 100 + d.getDate() + cfg.day * 999 + offset * 1337;
+      const movie = await fetchScreeningMovie(cfg, dateSeed);
+      return { cfg, movie, date: new Date(d) };
+    })
+  );
+
+  const ordered = [1,2,3,4,5,6,0].map(dow =>
+    weekMovies.find(w => w.cfg.day === dow)
+  ).filter(Boolean);
+
+  renderScreeningRoom(root, ordered, today);
+}
+
+
+
+/* ══════════════════════════════════════════════════════════════
+   SECTION 28 — LIVE FILM FEED (Stock Market Dashboard)
+   Real-time global film trending tracker
+══════════════════════════════════════════════════════════════ */
+
+const FEED_REGIONS = [
+  { code: 'US', name: 'United States',   flag: '🇺🇸', lang: 'en', color: '#4488ff' },
+  { code: 'GB', name: 'United Kingdom',  flag: '🇬🇧', lang: 'en', color: '#5599ff' },
+  { code: 'KR', name: 'South Korea',     flag: '🇰🇷', lang: 'ko', color: '#ff4466' },
+  { code: 'JP', name: 'Japan',           flag: '🇯🇵', lang: 'ja', color: '#ff6644' },
+  { code: 'CN', name: 'China',           flag: '🇨🇳', lang: 'zh', color: '#ffaa00' },
+  { code: 'FR', name: 'France',          flag: '🇫🇷', lang: 'fr', color: '#44aaff' },
+  { code: 'DE', name: 'Germany',         flag: '🇩🇪', lang: 'de', color: '#ffcc00' },
+  { code: 'IT', name: 'Italy',           flag: '🇮🇹', lang: 'it', color: '#44cc88' },
+  { code: 'ES', name: 'Spain',           flag: '🇪🇸', lang: 'es', color: '#ff8844' },
+  { code: 'IN', name: 'India',           flag: '🇮🇳', lang: 'hi', color: '#ff9933' },
+  { code: 'TH', name: 'Thailand',        flag: '🇹🇭', lang: 'th', color: '#3366ff' },
+  { code: 'VN', name: 'Vietnam',         flag: '🇻🇳', lang: 'vi', color: '#dd0000' },
+  { code: 'BR', name: 'Brazil',          flag: '🇧🇷', lang: 'pt', color: '#44bb44' },
+  { code: 'MX', name: 'Mexico',          flag: '🇲🇽', lang: 'es', color: '#cc3333' },
+  { code: 'AU', name: 'Australia',       flag: '🇦🇺', lang: 'en', color: '#3399cc' },
+  { code: 'RU', name: 'Russia',          flag: '🇷🇺', lang: 'ru', color: '#cc4444' },
+  { code: 'TR', name: 'Turkey',          flag: '🇹🇷', lang: 'tr', color: '#cc2200' },
+  { code: 'SA', name: 'Saudi Arabia',    flag: '🇸🇦', lang: 'ar', color: '#228833' },
+];
+
+const FEED_GENRE_COLORS = {
+  'Action':'#e50914','Adventure':'#f5a623','Animation':'#44cc88',
+  'Comedy':'#ffcc00','Crime':'#8844aa','Documentary':'#44aaff',
+  'Drama':'#9b59b6','Fantasy':'#3498db','History':'#e67e22',
+  'Horror':'#2c3e50','Music':'#e91e63','Mystery':'#455a64',
+  'Romance':'#ff6b9d','Sci-Fi':'#00bcd4','Thriller':'#6d4c41',
+  'War':'#78909c','Western':'#ff7043','Family':'#66bb6a',
+};
+
+// State cho feed
+const FEED_STATE = {
+  data: {},          // { regionCode: { movies, nowPlaying, fetchedAt } }
+  selected: null,    // region đang xem chi tiết
+  ticker: [],        // global ticker items
+  refreshInterval: null,
+  lastRefresh: null,
+  nextRefresh: null,
+  refreshCountdown: 3600,
+  prevRankings: {},  // để tính tăng/giảm
+};
+
+async function loadLiveFeed() {
+  const root = $('feed-root');
+  if (!root) return;
+
+  root.innerHTML = `
+    <div class="lf-boot">
+      <div class="lf-boot-logo">📡</div>
+      <div class="lf-boot-title">LIVE FILM FEED</div>
+      <div class="lf-boot-sub">Đang kết nối các thị trường điện ảnh toàn cầu...</div>
+      <div class="lf-boot-bars">
+        ${FEED_REGIONS.map(r => `<div class="lf-boot-bar" style="--bar-color:${r.color}"></div>`).join('')}
+      </div>
+    </div>`;
+
+  if (!STATE.tmdbKey) {
+    root.innerHTML = `
+      <div class="lf-no-key">
+        <div>📡</div>
+        <p>Cần TMDB Key để kết nối Live Feed</p>
+        <button onclick="openTmdbModal()" class="lf-key-btn">🔑 Nhập TMDB Key</button>
+      </div>`;
+    return;
+  }
+
+  // Fetch tất cả markets song song
+  await refreshFeedData(root);
+
+  // Auto-refresh mỗi giờ
+  if (FEED_STATE.refreshInterval) clearInterval(FEED_STATE.refreshInterval);
+  FEED_STATE.refreshCountdown = 3600;
+  FEED_STATE.refreshInterval = setInterval(() => {
+    FEED_STATE.refreshCountdown--;
+    updateFeedCountdown();
+    if (FEED_STATE.refreshCountdown <= 0) {
+      FEED_STATE.refreshCountdown = 3600;
+      refreshFeedData(root);
+    }
+  }, 1000);
+}
+
+async function refreshFeedData(root) {
+  FEED_STATE.lastRefresh = new Date();
+  FEED_STATE.nextRefresh = new Date(Date.now() + 3600000);
+
+  // Save previous for delta
+  FEED_REGIONS.forEach(r => {
+    if (FEED_STATE.data[r.code]?.movies?.[0]) {
+      FEED_STATE.prevRankings[r.code] = FEED_STATE.data[r.code].movies[0].tmdb_id;
+    }
+  });
+
+  // Strategy per region:
+  // - Unique language countries → /discover with original_language = bản địa
+  //   to get locally produced popular films
+  // - Anglophone countries (US/GB/AU) → /movie/now_playing?region + /discover sort popularity
+  // - Mixed markets (FR/DE/IT/ES/MX/BR/TR/SA) → discover region + language mix
+
+  const fetchRegion = async (region) => {
+    try {
+      const isAnglophone = ['US', 'GB', 'AU'].includes(region.code);
+      const hasUniqueLanguage = !['en', 'es', 'pt'].includes(region.lang);
+      // es/pt shared between multiple countries — add region filter too
+      const isSharedLang = ['es', 'pt'].includes(region.lang);
+
+      let discoverParams = {
+        sort_by: 'popularity.desc',
+        'vote_count.gte': 50,
+        page: 1,
+        region: region.code,
+      };
+
+      let discoverParams2 = null; // second fetch for mix
+
+      if (hasUniqueLanguage) {
+        // Pure local: Korean films for KR, Japanese for JP etc.
+        discoverParams['with_original_language'] = region.lang;
+        discoverParams['vote_count.gte'] = 20;
+        // Also fetch english popular in that region
+        discoverParams2 = {
+          sort_by: 'popularity.desc',
+          'vote_count.gte': 200,
+          page: 1,
+          region: region.code,
+          // no language filter = mix of everything popular in region
+        };
+      } else if (isSharedLang) {
+        // Spanish/Portuguese: filter by region to differentiate MX vs ES, BR vs PT
+        discoverParams['with_original_language'] = region.lang;
+        discoverParams['vote_count.gte'] = 30;
+        discoverParams2 = {
+          sort_by: 'popularity.desc',
+          'vote_count.gte': 300,
+          region: region.code,
+          page: 1,
+        };
+      } else {
+        // Anglophone/European: just use region-based popularity
+        discoverParams['vote_count.gte'] = 100;
+      }
+
+      const [nowPlaying, discoverRes, discoverRes2] = await Promise.all([
+        tmdb('/movie/now_playing', { region: region.code, page: 1 }).catch(() => ({ results: [] })),
+        tmdb('/discover/movie', discoverParams).catch(() => ({ results: [] })),
+        discoverParams2 ? tmdb('/discover/movie', discoverParams2).catch(() => ({ results: [] })) : Promise.resolve({ results: [] }),
+      ]);
+
+      // Merge: local language first, then mix, deduplicate
+      const seen = new Set();
+      const merged = [];
+      const addMovies = (list) => {
+        (list || []).forEach(m => {
+          if (!seen.has(m.id) && merged.length < 10) {
+            seen.add(m.id);
+            merged.push(normalizeMovie(m, 'movie'));
+          }
+        });
+      };
+      addMovies(discoverRes.results);
+      addMovies(discoverRes2.results);
+      // Fill remaining slots with now_playing if needed
+      addMovies(nowPlaying.results);
+
+      FEED_STATE.data[region.code] = {
+        movies: merged.slice(0, 10),
+        nowPlaying: (nowPlaying.results || []).slice(0, 5).map(r => normalizeMovie(r, 'movie')),
+        fetchedAt: new Date(),
+      };
+    } catch(e) {
+      FEED_STATE.data[region.code] = { movies: [], nowPlaying: [], fetchedAt: new Date() };
+    }
+  };
+
+  // Fetch in batches of 4 to avoid rate limiting
+  const batches = [];
+  for (let i = 0; i < FEED_REGIONS.length; i += 4) {
+    batches.push(FEED_REGIONS.slice(i, i + 4));
+  }
+  for (const batch of batches) {
+    await Promise.all(batch.map(fetchRegion));
+  }
+
+  // Global trending (this one is fine — it's genuinely global)
+  try {
+    const globalTrend = await tmdb('/trending/movie/day');
+    FEED_STATE.globalTrending = (globalTrend.results || []).slice(0, 20).map(r => normalizeMovie(r, 'movie'));
+  } catch(e) { FEED_STATE.globalTrending = []; }
+
+  renderLiveFeed(root);
+}
+
+function renderLiveFeed(root) {
+  root.innerHTML = '';
+
+  // ── TOPBAR ──
+  const topbar = document.createElement('div');
+  topbar.className = 'lf-topbar';
+  const now = new Date();
+  topbar.innerHTML = `
+    <div class="lf-topbar-left">
+      <span class="lf-live-dot"></span>
+      <span class="lf-topbar-title">LIVE FILM FEED</span>
+      <span class="lf-topbar-sub">Global Cinema Markets · ${now.toLocaleTimeString('vi-VN')}</span>
+    </div>
+    <div class="lf-topbar-right">
+      <span class="lf-refresh-info">🔄 Refresh sau: <strong id="lf-countdown">${formatCountdown(FEED_STATE.refreshCountdown)}</strong></span>
+      <button class="lf-manual-refresh" id="lf-manual-refresh">⚡ Refresh ngay</button>
+    </div>`;
+  root.appendChild(topbar);
+
+  // ── GLOBAL TICKER ──
+  const ticker = buildFeedTicker();
+  root.appendChild(ticker);
+
+  // ── MAIN LAYOUT ──
+  const main = document.createElement('div');
+  main.className = 'lf-main';
+
+  // LEFT: Market grid (stock board style)
+  const board = buildMarketBoard();
+  main.appendChild(board);
+
+  // RIGHT: Detail panel
+  const detail = document.createElement('div');
+  detail.className = 'lf-detail-panel';
+  detail.id = 'lf-detail-panel';
+  const firstRegion = FEED_STATE.selected || FEED_REGIONS[0].code;
+  renderDetailPanel(detail, firstRegion);
+  main.appendChild(detail);
+
+  root.appendChild(main);
+
+  // ── BOTTOM: Global Charts ──
+  const charts = buildGlobalCharts();
+  root.appendChild(charts);
+
+  // Events
+  root.querySelector('#lf-manual-refresh')?.addEventListener('click', () => {
+    FEED_STATE.refreshCountdown = 3600;
+    refreshFeedData(root);
+  });
+}
+
+function buildFeedTicker() {
+  const ticker = document.createElement('div');
+  ticker.className = 'lf-ticker';
+
+  const items = [];
+  FEED_REGIONS.forEach(r => {
+    const d = FEED_STATE.data[r.code];
+    if (d?.movies?.[0]) {
+      const m = d.movies[0];
+      items.push(`${r.flag} ${r.name.toUpperCase()}: <b>${m.title}</b> #1 ⭐${m.rating}`);
+    }
+  });
+  // Global trending
+  if (FEED_STATE.globalTrending?.[0]) {
+    items.unshift(`🌍 GLOBAL #1: <b>${FEED_STATE.globalTrending[0].title}</b> ⭐${FEED_STATE.globalTrending[0].rating}`);
+  }
+
+  const inner = items.join('  ·  ');
+  ticker.innerHTML = `
+    <div class="lf-ticker-label">📡 LIVE</div>
+    <div class="lf-ticker-track">
+      <div class="lf-ticker-inner">${inner}&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;${inner}</div>
+    </div>`;
+  return ticker;
+}
+
+function buildMarketBoard() {
+  const board = document.createElement('div');
+  board.className = 'lf-board';
+
+  // Board header
+  const hdr = document.createElement('div');
+  hdr.className = 'lf-board-header';
+  hdr.innerHTML = `
+    <div class="lf-board-title">📊 THỊ TRƯỜNG ĐIỆN ẢNH</div>
+    <div class="lf-board-cols">
+      <span>THỊ TRƯỜNG</span><span>#1 TRENDING</span><span>RATING</span><span>THAY ĐỔI</span>
+    </div>`;
+  board.appendChild(hdr);
+
+  // Market rows
+  const rows = document.createElement('div');
+  rows.className = 'lf-market-rows';
+
+  FEED_REGIONS.forEach((region, idx) => {
+    const d = FEED_STATE.data[region.code];
+    const top = d?.movies?.[0];
+    const prevId = FEED_STATE.prevRankings[region.code];
+    const isNew = top && prevId && top.tmdb_id !== prevId;
+    const hasData = !!top;
+
+    const row = document.createElement('div');
+    row.className = `lf-market-row${FEED_STATE.selected === region.code ? ' lf-row-active' : ''}`;
+    row.style.setProperty('--region-color', region.color);
+    row.style.animationDelay = `${idx * 40}ms`;
+
+    // Mock mini sparkline (random for visual)
+    const spark = generateSparkline(region.code);
+
+    row.innerHTML = `
+      <div class="lf-row-market">
+        <span class="lf-row-flag">${region.flag}</span>
+        <div>
+          <div class="lf-row-name">${region.name}</div>
+          <div class="lf-row-code">${region.code} · ${d?.movies?.length || 0} titles</div>
+        </div>
+      </div>
+      <div class="lf-row-top">
+        ${hasData ? `
+          <div class="lf-row-poster">
+            ${top.poster ? `<img src="${top.poster}" />` : '🎬'}
+          </div>
+          <div class="lf-row-title-wrap">
+            <div class="lf-row-film-title">${top.title}</div>
+            <div class="lf-row-film-genre">${(top.genre||'').split(',')[0]}</div>
+          </div>
+        ` : '<div class="lf-row-no-data">—</div>'}
+      </div>
+      <div class="lf-row-rating">
+        ${hasData ? `
+          <div class="lf-rating-val" style="color:${ratingBg(top.rating)}">${top.rating}</div>
+          <div class="lf-spark">${spark}</div>
+        ` : '—'}
+      </div>
+      <div class="lf-row-change">
+        ${isNew ? '<span class="lf-badge-new">🔺 NEW #1</span>' : (hasData ? '<span class="lf-badge-hold">— HOLD</span>' : '')}
+      </div>`;
+
+    row.addEventListener('click', () => {
+      FEED_STATE.selected = region.code;
+      // Update active states
+      document.querySelectorAll('.lf-market-row').forEach(r => r.classList.remove('lf-row-active'));
+      row.classList.add('lf-row-active');
+      // Update detail panel
+      const panel = $('lf-detail-panel');
+      if (panel) renderDetailPanel(panel, region.code);
+    });
+
+    rows.appendChild(row);
+  });
+
+  board.appendChild(rows);
+  return board;
+}
+
+function renderDetailPanel(panel, regionCode) {
+  FEED_STATE.selected = regionCode;
+  const region = FEED_REGIONS.find(r => r.code === regionCode);
+  const d = FEED_STATE.data[regionCode];
+
+  if (!region || !d) { panel.innerHTML = '<div class="lf-detail-empty">Chọn một thị trường để xem chi tiết</div>'; return; }
+
+  panel.innerHTML = '';
+
+  // Header
+  const hdr = document.createElement('div');
+  hdr.className = 'lf-detail-hdr';
+  hdr.style.setProperty('--region-color', region.color);
+  hdr.innerHTML = `
+    <div class="lf-detail-flag">${region.flag}</div>
+    <div>
+      <div class="lf-detail-country">${region.name}</div>
+      <div class="lf-detail-time">Cập nhật: ${d.fetchedAt?.toLocaleTimeString('vi-VN') || 'N/A'}</div>
+    </div>
+    <div class="lf-detail-badge" style="background:${region.color}22;color:${region.color};border-color:${region.color}44">${region.code}</div>`;
+  panel.appendChild(hdr);
+
+  // Genre breakdown
+  const genreCount = {};
+  (d.movies || []).forEach(m => {
+    (m.genre || '').split(',').map(g => g.trim()).filter(Boolean).forEach(g => {
+      genreCount[g] = (genreCount[g] || 0) + 1;
+    });
+  });
+  const topGenres = Object.entries(genreCount).sort((a,b) => b[1]-a[1]).slice(0, 4);
+  if (topGenres.length) {
+    const genreBar = document.createElement('div');
+    genreBar.className = 'lf-genre-strip';
+    genreBar.innerHTML = topGenres.map(([g, n]) =>
+      `<span class="lf-genre-pill" style="background:${FEED_GENRE_COLORS[g]||'#444'}22;color:${FEED_GENRE_COLORS[g]||'#888'};border-color:${FEED_GENRE_COLORS[g]||'#444'}44">${g} <b>${n}</b></span>`
+    ).join('');
+    panel.appendChild(genreBar);
+  }
+
+  // Top 10 list
+  const listLabel = document.createElement('div');
+  listLabel.className = 'lf-detail-label';
+  listLabel.textContent = `🔥 TOP TRENDING — ${region.name.toUpperCase()}`;
+  panel.appendChild(listLabel);
+
+  const list = document.createElement('div');
+  list.className = 'lf-top-list';
+  (d.movies || []).forEach((m, i) => {
+    const item = document.createElement('div');
+    item.className = 'lf-top-item';
+    item.style.setProperty('--region-color', region.color);
+    item.innerHTML = `
+      <div class="lf-top-rank" style="color:${i < 3 ? region.color : 'var(--gray)'}">${i+1}</div>
+      <div class="lf-top-poster">
+        ${m.poster ? `<img src="${m.poster}" />` : '🎬'}
+      </div>
+      <div class="lf-top-info">
+        <div class="lf-top-title">${m.title}</div>
+        <div class="lf-top-meta">
+          <span style="background:${ratingBg(m.rating)};color:${ratingFg(m.rating)}" class="lf-top-rating">⭐ ${m.rating}</span>
+          <span class="lf-top-year">${m.year}</span>
+          <span class="lf-top-genre">${(m.genre||'').split(',')[0]}</span>
+        </div>
+      </div>
+      ${i === 0 ? `<div class="lf-top-crown">👑</div>` : ''}`;
+    item.addEventListener('click', () => showDetailPage(m));
+    list.appendChild(item);
+  });
+  panel.appendChild(list);
+
+  // Now Playing
+  if (d.nowPlaying?.length) {
+    const npLabel = document.createElement('div');
+    npLabel.className = 'lf-detail-label';
+    npLabel.style.marginTop = '16px';
+    npLabel.textContent = `🎬 ĐANG CHIẾU RẠP — ${region.code}`;
+    panel.appendChild(npLabel);
+
+    const npRow = document.createElement('div');
+    npRow.className = 'lf-np-row';
+    d.nowPlaying.forEach(m => {
+      const card = document.createElement('div');
+      card.className = 'lf-np-card';
+      card.innerHTML = `
+        <div class="lf-np-poster">
+          ${m.poster ? `<img src="${m.poster}" />` : '🎬'}
+        </div>
+        <div class="lf-np-title">${m.title}</div>
+        <div class="lf-np-rating" style="color:${ratingBg(m.rating)}">⭐ ${m.rating}</div>`;
+      card.addEventListener('click', () => showDetailPage(m));
+      npRow.appendChild(card);
+    });
+    panel.appendChild(npRow);
+  }
+}
+
+function buildGlobalCharts() {
+  const section = document.createElement('div');
+  section.className = 'lf-global-section';
+
+  // ── Section 1: East vs West ──
+  const ewWrap = document.createElement('div');
+  ewWrap.className = 'lf-ew-wrap';
+
+  const eastRegions = ['KR','JP','CN','TH','VN','IN'];
+  const westRegions = ['US','GB','FR','DE','IT','ES'];
+
+  const eastMovies = getTopMoviesForRegions(eastRegions, 5);
+  const westMovies = getTopMoviesForRegions(westRegions, 5);
+
+  ewWrap.innerHTML = `<div class="lf-ew-title">⚔️ ĐÔNG vs TÂY — Top Phim Theo Khu Vực</div>`;
+  const ewGrid = document.createElement('div');
+  ewGrid.className = 'lf-ew-grid';
+
+  // East
+  const eastCol = document.createElement('div');
+  eastCol.className = 'lf-ew-col';
+  eastCol.innerHTML = `<div class="lf-ew-col-label" style="color:#ff6644">🌏 ĐIỆN ẢNH CHÂU Á</div>`;
+  eastMovies.forEach((m, i) => {
+    const row = document.createElement('div');
+    row.className = 'lf-ew-row';
+    row.innerHTML = `
+      <span class="lf-ew-n" style="color:#ff6644">${i+1}</span>
+      ${m.poster ? `<img class="lf-ew-thumb" src="${m.poster}" />` : ''}
+      <div>
+        <div class="lf-ew-film">${m.title}</div>
+        <div class="lf-ew-meta">⭐${m.rating} · ${m.year}</div>
+      </div>`;
+    row.addEventListener('click', () => showDetailPage(m));
+    eastCol.appendChild(row);
+  });
+  ewGrid.appendChild(eastCol);
+
+  // Divider
+  const div = document.createElement('div');
+  div.className = 'lf-ew-divider';
+  div.innerHTML = '<div class="lf-ew-vs">VS</div>';
+  ewGrid.appendChild(div);
+
+  // West
+  const westCol = document.createElement('div');
+  westCol.className = 'lf-ew-col';
+  westCol.innerHTML = `<div class="lf-ew-col-label" style="color:#4488ff">🌎 ĐIỆN ẢNH PHƯƠNG TÂY</div>`;
+  westMovies.forEach((m, i) => {
+    const row = document.createElement('div');
+    row.className = 'lf-ew-row';
+    row.innerHTML = `
+      <span class="lf-ew-n" style="color:#4488ff">${i+1}</span>
+      ${m.poster ? `<img class="lf-ew-thumb" src="${m.poster}" />` : ''}
+      <div>
+        <div class="lf-ew-film">${m.title}</div>
+        <div class="lf-ew-meta">⭐${m.rating} · ${m.year}</div>
+      </div>`;
+    row.addEventListener('click', () => showDetailPage(m));
+    westCol.appendChild(row);
+  });
+  ewGrid.appendChild(westCol);
+
+  ewWrap.appendChild(ewGrid);
+  section.appendChild(ewWrap);
+
+  // ── Section 2: Genre Heatmap ──
+  const heatWrap = document.createElement('div');
+  heatWrap.className = 'lf-heat-wrap';
+  heatWrap.innerHTML = `<div class="lf-heat-title">🌡️ THỂ LOẠI ĐANG HOT TOÀN CẦU</div>`;
+  heatWrap.appendChild(buildGenreHeatmap());
+  section.appendChild(heatWrap);
+
+  // ── Section 3: Global Top 20 ──
+  if (FEED_STATE.globalTrending?.length) {
+    const globalWrap = document.createElement('div');
+    globalWrap.className = 'lf-global-top-wrap';
+    globalWrap.innerHTML = `<div class="lf-global-top-title">🌍 GLOBAL TOP 20 — TRENDING HÔM NAY</div>`;
+    const globalGrid = document.createElement('div');
+    globalGrid.className = 'lf-global-top-grid';
+    FEED_STATE.globalTrending.forEach((m, i) => {
+      const card = document.createElement('div');
+      card.className = 'lf-global-card';
+      card.innerHTML = `
+        <div class="lf-global-rank">#${i+1}</div>
+        <div class="lf-global-poster">
+          ${m.poster ? `<img src="${m.poster}" />` : '<div class="lf-global-no-poster">🎬</div>'}
+        </div>
+        <div class="lf-global-info">
+          <div class="lf-global-title">${m.title}</div>
+          <div class="lf-global-meta">
+            <span style="background:${ratingBg(m.rating)};color:${ratingFg(m.rating)}" class="lf-global-rating">⭐ ${m.rating}</span>
+            <span class="lf-global-year">${m.year}</span>
+          </div>
+          <div class="lf-global-genre">${(m.genre||'').split(',')[0]}</div>
+        </div>`;
+      card.addEventListener('click', () => showDetailPage(m));
+      globalGrid.appendChild(card);
+    });
+    globalWrap.appendChild(globalGrid);
+    section.appendChild(globalWrap);
+  }
+
+  return section;
+}
+
+function buildGenreHeatmap() {
+  const allGenres = {};
+  FEED_REGIONS.forEach(r => {
+    const d = FEED_STATE.data[r.code];
+    (d?.movies || []).forEach(m => {
+      (m.genre || '').split(',').map(g => g.trim()).filter(Boolean).forEach(g => {
+        if (!allGenres[g]) allGenres[g] = { count: 0, regions: [] };
+        allGenres[g].count++;
+        if (!allGenres[g].regions.includes(r.flag)) allGenres[g].regions.push(r.flag);
+      });
+    });
+  });
+
+  const sorted = Object.entries(allGenres).sort((a,b) => b[1].count - a[1].count).slice(0, 12);
+  const maxCount = sorted[0]?.[1].count || 1;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'lf-heat-grid';
+  sorted.forEach(([genre, data]) => {
+    const pct = Math.round(data.count / maxCount * 100);
+    const cell = document.createElement('div');
+    cell.className = 'lf-heat-cell';
+    const color = FEED_GENRE_COLORS[genre] || '#888';
+    cell.style.setProperty('--heat-color', color);
+    cell.style.setProperty('--heat-pct', pct + '%');
+    cell.innerHTML = `
+      <div class="lf-heat-bar-bg">
+        <div class="lf-heat-bar-fill" style="width:${pct}%;background:${color}"></div>
+      </div>
+      <div class="lf-heat-label">
+        <span class="lf-heat-genre" style="color:${color}">${genre}</span>
+        <span class="lf-heat-count">${data.count} films</span>
+      </div>
+      <div class="lf-heat-flags">${data.regions.slice(0,6).join(' ')}</div>`;
+    wrap.appendChild(cell);
+  });
+  return wrap;
+}
+
+// ── Helpers ──
+function getTopMoviesForRegions(codes, limit) {
+  const seen = new Set();
+  const result = [];
+  codes.forEach(code => {
+    const d = FEED_STATE.data[code];
+    (d?.movies || []).slice(0, 3).forEach(m => {
+      if (!seen.has(m.tmdb_id) && result.length < limit) {
+        seen.add(m.tmdb_id);
+        result.push(m);
+      }
+    });
+  });
+  return result.sort((a, b) => parseFloat(b.rating) - parseFloat(a.rating));
+}
+
+function generateSparkline(code) {
+  // Visual-only sparkline SVG
+  const seed = code.charCodeAt(0) * 31 + code.charCodeAt(1);
+  const points = [];
+  let y = 50;
+  for (let i = 0; i < 8; i++) {
+    y = Math.max(10, Math.min(90, y + (((seed * (i+1) * 7919) % 40) - 20)));
+    points.push(`${i * 14},${y}`);
+  }
+  const isUp = parseInt(points[points.length-1]) < parseInt(points[0]);
+  const color = isUp ? '#44ff88' : '#ff4444';
+  return `<svg width="98" height="30" viewBox="0 0 98 100" preserveAspectRatio="none">
+    <polyline points="${points.join(' ')}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+function formatCountdown(secs) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function updateFeedCountdown() {
+  const el = document.getElementById('lf-countdown');
+  if (el) el.textContent = formatCountdown(FEED_STATE.refreshCountdown);
+}
+
+
+
+/* ══════════════════════════════════════════════════════════════
+   CINEMATIC UNIVERSE BUILDER — Web Graph 3 Layers
+══════════════════════════════════════════════════════════════ */
+
+async function showCinematicUniverse(centerName, centerType = 'person') {
+  // Tạo overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'universe-overlay';
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:500;
+    background:#04080f;
+    display:flex;flex-direction:column;
+    font-family:'DM Sans',sans-serif;
+  `;
+
+  overlay.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;
+      padding:12px 20px;background:#080c14;border-bottom:1px solid #1e2d45;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="font-size:1.1rem;font-weight:700;color:#44ff88;">🕸️ Cinematic Universe</span>
+        <span id="univ-center-label" style="color:#7a8fa8;font-size:0.88rem;"></span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="font-size:0.78rem;color:#7a8fa8;" id="univ-status">Đang xây dựng...</span>
+        <button id="univ-close" style="background:#1a1a2e;border:1px solid #1e2d45;
+          color:#aaa;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.85rem;">✕ Đóng</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;padding:8px 16px;background:#060a11;
+      border-bottom:1px solid #1e2d45;flex-shrink:0;flex-wrap:wrap;align-items:center;">
+      <span style="font-size:0.75rem;color:#7a8fa8;">Chú thích:</span>
+      <span style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#e8302a;">
+        <svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="#e8302a"/></svg> Trung tâm
+      </span>
+      <span style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#e8a020;">
+        <svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#e8a020"/></svg> Diễn viên / Đạo diễn
+      </span>
+      <span style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#2980d4;">
+        <svg width="14" height="14"><rect x="2" y="2" width="10" height="10" rx="2" fill="#2980d4"/></svg> Phim
+      </span>
+      <span style="font-size:0.75rem;color:#7a8fa8;margin-left:8px;">
+        🖱️ Drag để di chuyển · Scroll để zoom · Click node để mở chi tiết
+      </span>
+    </div>
+    <svg id="univ-svg" style="flex:1;width:100%;cursor:grab;"></svg>
+    <div id="univ-tooltip" style="position:fixed;pointer-events:none;z-index:600;
+      background:#0f1623;border:1px solid #1e2d45;border-radius:8px;
+      padding:10px 14px;font-size:0.82rem;color:#e8edf5;
+      box-shadow:0 8px 32px rgba(0,0,0,.8);opacity:0;transition:opacity .15s;
+      max-width:220px;"></div>
+  `;
+
+  document.body.appendChild(overlay);
+  document.getElementById('univ-close').addEventListener('click', () => overlay.remove());
+
+  // Fetch data
+  const person = await fetchPersonDetail(centerName);
+  if (!person) {
+    document.getElementById('univ-status').textContent = '⚠️ Không tìm thấy dữ liệu';
+    return;
+  }
+
+  document.getElementById('univ-center-label').textContent =
+    `${person.name} · ${person.isDirector ? 'Đạo diễn' : 'Diễn viên'}`;
+
+  // ── XÂY DỰNG GRAPH DATA (3 lớp) ──
+  const nodes = [], links = [];
+  const nodeMap = {};
+
+  const addNode = (id, data) => {
+    if (!nodeMap[id]) {
+      nodeMap[id] = data;
+      nodes.push(data);
+    }
+    return nodeMap[id];
+  };
+
+  // Layer 0: Center
+  const centerNode = addNode(`person_${person.id}`, {
+    id: `person_${person.id}`,
+    type: 'center',
+    label: person.name,
+    img: person.avatar,
+    layer: 0,
+    data: { name: person.name, avatar: person.avatar, tmdb_id: person.tmdb_id },
+    r: 32,
+  });
+
+  // Layer 1: Phim của người này
+  const films = (person.isDirector ? person.directed : person.filmography)
+    .filter(m => m.tmdb_id)
+    .sort((a, b) => bayesianRating(b.rating, b.vote_count) - bayesianRating(a.rating, a.vote_count))
+    .slice(0, 30); // layer 1: tối đa 30 phim
+
+  const layer1Films = films.filter(m => m.tmdb_id);
+
+  for (const film of layer1Films) {
+    const fid = `movie_${film.tmdb_id}`;
+    const fNode = addNode(fid, {
+      id: fid,
+      type: 'movie',
+      label: film.title,
+      img: film.poster,
+      layer: 1,
+      data: film,
+      r: 22,
+      rating: parseFloat(film.rating) || 0,
+    });
+    links.push({ source: centerNode.id, target: fid, layer: 1 });
+  }
+
+  document.getElementById('univ-status').textContent =
+    `Lớp 1: ${layer1Films.length} phim · Đang tải lớp 2...`;
+
+  // Layer 2 & 3: Diễn viên của từng phim → phim khác của họ
+  const castFetches = layer1Films.slice(0, 15).map(async (film) => {
+    if (!STATE.tmdbKey || !film.tmdb_id) return;
+    try {
+      const mt = film.mediaType || 'movie';
+      const credits = await tmdb(`/${mt}/${film.tmdb_id}/credits`);
+      const cast = (credits.cast || []).slice(0, 3);
+
+      for (const actor of cast) {
+        const aid = `person_${actor.id}`;
+        if (nodeMap[aid]) {
+          // Đã có → chỉ thêm link
+          links.push({ source: `movie_${film.tmdb_id}`, target: aid, layer: 2 });
+          continue;
+        }
+
+        const aNode = addNode(aid, {
+          id: aid,
+          type: 'person',
+          label: actor.name,
+          img: actor.profile_path ? `${TMDB_IMG}/w185${actor.profile_path}` : '',
+          layer: 2,
+          data: { name: actor.name, avatar: actor.profile_path ? `${TMDB_IMG}/w185${actor.profile_path}` : '', tmdb_id: String(actor.id) },
+          r: 18,
+        });
+        links.push({ source: `movie_${film.tmdb_id}`, target: aid, layer: 2 });
+
+        // Layer 3: 2 phim nổi tiếng nhất của actor này
+        try {
+          const actorCredits = await tmdb(`/person/${actor.id}/movie_credits`);
+          const topFilms = (actorCredits.cast || [])
+            .filter(m => m.vote_count >= 500 && m.poster_path)
+            .sort((a, b) => b.vote_count - a.vote_count)
+            .slice(0, 1);
+
+          for (const af of topFilms) {
+            const afid = `movie_${af.id}`;
+            if (!nodeMap[afid]) {
+              addNode(afid, {
+                id: afid,
+                type: 'movie',
+                label: af.title || af.name || '',
+                img: af.poster_path ? `${TMDB_IMG}/w185${af.poster_path}` : '',
+                layer: 3,
+                data: normalizeMovie(af, 'movie'),
+                r: 15,
+                rating: af.vote_average || 0,
+              });
+            }
+            links.push({ source: aid, target: afid, layer: 3 });
+          }
+        } catch(e) {}
+      }
+    } catch(e) {}
+  });
+
+  await Promise.all(castFetches);
+
+  document.getElementById('univ-status').textContent =
+    `${nodes.length} nodes · ${links.length} kết nối · Click để xem chi tiết`;
+
+  // ── RENDER D3 FORCE GRAPH ──
+  renderUniverseGraph(overlay, nodes, links, centerNode);
+}
+
+function renderUniverseGraph(overlay, nodes, links, centerNode) {
+  const svg = d3.select('#univ-svg');
+  const tooltip = document.getElementById('univ-tooltip');
+  const W = overlay.querySelector('svg').clientWidth || window.innerWidth;
+  const H = overlay.querySelector('svg').clientHeight || (window.innerHeight - 120);
+
+  svg.selectAll('*').remove();
+
+  // Deduplicate links
+  const linkSet = new Set();
+  const cleanLinks = links.filter(l => {
+    const k = [l.source, l.target].sort().join('|');
+    if (linkSet.has(k)) return false;
+    linkSet.add(k);
+    return true;
+  });
+
+  // Force simulation
+  const sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(cleanLinks).id(d => d.id).distance(d => {
+      if (d.layer === 1) return 120;
+      if (d.layer === 2) return 90;
+      return 70;
+    }).strength(0.4))
+    .force('charge', d3.forceManyBody().strength(d => {
+      if (d.type === 'center') return -800;
+      if (d.layer === 1) return -300;
+      if (d.layer === 2) return -150;
+      return -80;
+    }))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide(d => d.r + 8))
+    .alphaDecay(0.025);
+
+  // Zoom
+  const zoomG = svg.append('g');
+  svg.call(d3.zoom()
+    .scaleExtent([0.15, 4])
+    .on('zoom', e => zoomG.attr('transform', e.transform))
+  );
+
+  // Gradient defs
+  const defs = svg.append('defs');
+
+  // Glow filter
+  const filter = defs.append('filter').attr('id', 'univ-glow');
+  filter.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'coloredBlur');
+  const feMerge = filter.append('feMerge');
+  feMerge.append('feMergeNode').attr('in', 'coloredBlur');
+  feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+  // Image patterns for nodes
+  nodes.forEach(n => {
+    if (n.img) {
+      const pat = defs.append('pattern')
+        .attr('id', `univ-img-${n.id.replace(/[^a-z0-9]/gi, '_')}`)
+        .attr('patternUnits', 'objectBoundingBox')
+        .attr('width', 1).attr('height', 1);
+      pat.append('image')
+        .attr('href', n.img)
+        .attr('width', n.r * 2)
+        .attr('height', n.r * 2)
+        .attr('preserveAspectRatio', 'xMidYMid slice');
+    }
+  });
+
+  // Link color by layer
+  const linkColor = l => l.layer === 1 ? 'rgba(232,160,32,0.5)'
+    : l.layer === 2 ? 'rgba(41,128,212,0.3)'
+    : 'rgba(100,180,100,0.2)';
+
+  // Draw links
+  const link = zoomG.append('g').selectAll('line')
+    .data(cleanLinks).enter().append('line')
+    .attr('stroke', d => linkColor(d))
+    .attr('stroke-width', d => d.layer === 1 ? 1.5 : d.layer === 2 ? 1 : 0.7)
+    .attr('stroke-dasharray', d => d.layer === 3 ? '4,3' : null);
+
+  // Node groups
+  const nodeG = zoomG.append('g').selectAll('g')
+    .data(nodes).enter().append('g')
+    .style('cursor', 'pointer')
+    .call(d3.drag()
+      .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on('end',   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  // Node circles / rects
+  nodeG.each(function(d) {
+    const g = d3.select(this);
+    const patId = `url(#univ-img-${d.id.replace(/[^a-z0-9]/gi, '_')})`;
+
+    if (d.type === 'movie') {
+      // Rounded rect for movies
+      g.append('rect')
+        .attr('width', d.r * 2).attr('height', d.r * 2)
+        .attr('x', -d.r).attr('y', -d.r)
+        .attr('rx', 4).attr('ry', 4)
+        .attr('fill', d.img ? patId : '#1a2a3a')
+        .attr('stroke', d.layer === 1 ? '#2980d4' : d.layer === 3 ? '#1a4a2a' : '#1a3a4a')
+        .attr('stroke-width', d.layer === 1 ? 2 : 1);
+    } else {
+      // Circle for people
+      g.append('circle')
+        .attr('r', d.r)
+        .attr('fill', d.img ? patId : (d.type === 'center' ? '#3a0a0a' : '#2a1a0a'))
+        .attr('stroke', d.type === 'center' ? '#e8302a' : '#e8a020')
+        .attr('stroke-width', d.type === 'center' ? 3 : 1.5)
+        .attr('filter', d.type === 'center' ? 'url(#univ-glow)' : null);
+    }
+
+    // Label
+    const labelY = d.r + 12;
+    g.append('text')
+      .attr('text-anchor', 'middle')
+      .attr('y', labelY)
+      .attr('fill', d.type === 'center' ? '#e8302a'
+        : d.type === 'movie' ? '#a0c4e8'
+        : '#e8c88a')
+      .attr('font-size', d.type === 'center' ? '12px' : d.layer === 1 ? '10px' : '8px')
+      .attr('font-weight', d.type === 'center' ? '700' : '400')
+      .text(d.label.length > 16 ? d.label.slice(0, 14) + '…' : d.label);
+
+    // Rating badge for movies
+    if (d.type === 'movie' && d.rating >= 7) {
+      g.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('y', -d.r - 4)
+        .attr('fill', '#f5c518')
+        .attr('font-size', '8px')
+        .text(`⭐ ${d.rating.toFixed(1)}`);
+    }
+  });
+
+  // Tooltip
+  nodeG
+    .on('mouseover', (e, d) => {
+      tooltip.style.opacity = '1';
+      tooltip.innerHTML = d.type === 'movie'
+        ? `<b>${d.label}</b><br>⭐ ${d.data?.rating || '?'} · ${d.data?.year || ''}<br><small style="color:#7a8fa8">${(d.data?.genre || '').split(',')[0]}</small>`
+        : `<b>${d.label}</b><br><small style="color:#7a8fa8">${d.type === 'center' ? '🎬 Trung tâm' : (d.layer === 2 ? '🎭 Diễn viên' : '👤 Liên kết')}</small>`;
+    })
+    .on('mousemove', e => {
+      tooltip.style.left = (e.clientX + 14) + 'px';
+      tooltip.style.top  = (e.clientY - 10) + 'px';
+    })
+    .on('mouseout', () => { tooltip.style.opacity = '0'; })
+    .on('click', (e, d) => {
+      e.stopPropagation();
+      overlay.remove();
+      if (d.type === 'movie' && d.data) {
+        showDetailPage(d.data);
+      } else if (d.type !== 'center' && d.data?.name) {
+        // Tìm xem là diễn viên hay đạo diễn
+        if (d.data.name) showActorPage({ name: d.data.name, avatar: d.data.avatar || '' });
+      }
+    });
+
+  // Tick
+  sim.on('tick', () => {
+    link
+      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    nodeG.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+}
+
+function bayesianRating(rating, voteCount, minVotes = 1000, avgRating = 6.5) {
+  const v = voteCount || 0;
+  const R = parseFloat(rating) || 0;
+  return (v / (v + minVotes)) * R + (minVotes / (v + minVotes)) * avgRating;
 }
