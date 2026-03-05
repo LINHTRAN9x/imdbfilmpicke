@@ -4067,3 +4067,207 @@ img { display: block; }
   from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+
+/* ── DAILY PICK MODAL ── */
+#daily-modal {
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(8px);
+}
+
+.daily-card {
+  position: relative;
+  width: min(720px, 95vw);
+  border-radius: 20px;
+  overflow: hidden;
+  background: #0f1623;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 32px 80px rgba(0,0,0,0.8);
+  opacity: 0;
+  transform: translateY(30px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
+}
+.daily-card.daily-card-in {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* Backdrop blur background */
+.daily-backdrop {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(30px) brightness(0.3) saturate(1.5);
+  transform: scale(1.1);
+  z-index: 0;
+}
+.daily-backdrop-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(10,14,23,0.7) 0%, rgba(10,14,23,0.4) 100%);
+  z-index: 1;
+}
+
+.daily-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  gap: 24px;
+  padding: 28px;
+}
+
+/* Poster */
+.daily-poster-wrap {
+  flex-shrink: 0;
+  width: 160px;
+  height: 240px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  background: #1a1a2e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+}
+
+/* Info */
+.daily-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+
+.daily-sup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #f5c518;
+  text-transform: uppercase;
+}
+.daily-sup-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f5c518;
+  animation: daily-pulse 1.5s infinite;
+}
+@keyframes daily-pulse {
+  0%,100% { opacity:1; transform:scale(1); }
+  50%      { opacity:0.4; transform:scale(0.7); }
+}
+
+.daily-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.daily-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.daily-rating {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.daily-year {
+  font-size: 0.82rem;
+  color: #a0aec0;
+}
+.daily-genre {
+  font-size: 0.78rem;
+  color: #718096;
+  background: rgba(255,255,255,0.07);
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+
+.daily-desc {
+  font-size: 0.85rem;
+  color: #a0aec0;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.daily-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.daily-btn-primary {
+  background: #e50914;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 22px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+}
+.daily-btn-primary:hover {
+  background: #ff1f2e;
+  transform: scale(1.04);
+}
+.daily-btn-skip {
+  background: transparent;
+  color: #718096;
+  border: 1px solid #2d3748;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.daily-btn-skip:hover {
+  color: #a0aec0;
+  border-color: #4a5568;
+}
+
+/* Close button */
+.daily-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 10;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #a0aec0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+}
+.daily-close:hover {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+}
+
+/* Mobile */
+@media (max-width: 520px) {
+  .daily-content { flex-direction: column; align-items: center; text-align: center; }
+  .daily-poster-wrap { width: 120px; height: 180px; }
+  .daily-meta { justify-content: center; }
+  .daily-actions { justify-content: center; }
+  .daily-title { font-size: 1.3rem; }
+}

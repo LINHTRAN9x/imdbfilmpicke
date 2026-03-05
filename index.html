@@ -283,14 +283,36 @@
 
 <!-- ══════════════════════════════════ DAILY PICK MODAL ══════════════════════════════════ -->
 <div id="daily-modal" class="modal-overlay hidden">
-  <div class="modal-box daily-box">
-    <p class="daily-sup">🌅 Phim hôm nay dành cho bạn</p>
-    <h3 id="daily-title"></h3>
-    <p id="daily-meta"></p>
-    <div class="modal-btns">
-      <button id="btn-daily-detail" class="modal-btn primary">👀 Xem chi tiết</button>
-      <button id="btn-daily-skip" class="modal-btn ghost">Bỏ qua</button>
+  <div class="daily-card" id="daily-card">
+    <!-- Backdrop blur -->
+    <div class="daily-backdrop" id="daily-backdrop"></div>
+    <div class="daily-backdrop-overlay"></div>
+
+    <!-- Content -->
+    <div class="daily-content">
+      <!-- Left: Poster -->
+      <div class="daily-poster-wrap" id="daily-poster-wrap">
+        <div class="daily-poster-placeholder">🎬</div>
+      </div>
+
+      <!-- Right: Info -->
+      <div class="daily-info">
+        <div class="daily-sup">
+          <span class="daily-sup-dot"></span>
+          PHIM HÔM NAY DÀNH CHO BẠN
+        </div>
+        <h2 class="daily-title" id="daily-title"></h2>
+        <div class="daily-meta" id="daily-meta"></div>
+        <p class="daily-desc" id="daily-desc"></p>
+        <div class="daily-actions">
+          <button id="btn-daily-detail" class="daily-btn-primary">▶ Xem chi tiết</button>
+          <button id="btn-daily-skip" class="daily-btn-skip">Bỏ qua</button>
+        </div>
+      </div>
     </div>
+
+    <!-- Close -->
+    <button class="daily-close" id="btn-daily-close">✕</button>
   </div>
 </div>
 

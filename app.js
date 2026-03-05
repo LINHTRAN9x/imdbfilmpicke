@@ -116,7 +116,7 @@ const STATIC_SOURCES = {
   '🔂 Best Mini Series':            {type:'tv',   sort:'vote_average.desc',  minVotes:10000, miniSeries:true},
   [`📺 Best TV of ${CURRENT_YEAR}`]:  {type:'tv', sort:'vote_average.desc',  minVotes:1000,  year:CURRENT_YEAR},
   '🇰🇷 Best Korean':                {type:'movie', sort:'vote_average.desc', minVotes:5000,  lang:'ko'},
-  '🇯🇵 Best Japanese':              {type:'movie', sort:'vote_average.desc', minVotes:5000,  lang:'ja'},
+  '🇯🇵 Best Japanese':              {type:'movie', sort:'vote_average.desc', minVotes:1000,  lang:'ja'},
   '🇫🇷 Best French':                {type:'movie', sort:'vote_average.desc', minVotes:5000,  lang:'fr'},
   '🇮🇳 Best Hindi / Bollywood':     {type:'movie', sort:'vote_average.desc', minVotes:5000,  lang:'hi'},
 };
@@ -210,6 +210,9 @@ function loadStorage() {
     STATE.otdType        = cfg.otdType        || '';
     STATE.dailyPickShown = cfg.dailyPickShown || '';
     STATE.filterCollapsed= cfg.filterCollapsed|| false;
+    STATE._srRerollCount = cfg.srRerollCount || 0;
+    STATE._srRerollWeek  = cfg.srRerollWeek  || '';
+    STATE._srWeekMovies  = cfg.srWeekMovies  || null;
   } catch(e) {}
 
   try {
@@ -227,6 +230,9 @@ function saveConfig() {
     customDateActive: STATE.customDateActive, cinemaRegion: STATE.cinemaRegion,
     otdYearFrom: STATE.otdYearFrom, otdType: STATE.otdType,
     dailyPickShown: STATE.dailyPickShown, filterCollapsed: STATE.filterCollapsed,
+    srRerollCount: STATE._srRerollCount || 0,
+    srRerollWeek:  STATE._srRerollWeek  || '',
+    srWeekMovies:  STATE._srWeekMovies  || null,
   };
   localStorage.setItem('imdb_config', JSON.stringify(cfg));
 }
@@ -3260,7 +3266,6 @@ function showDailyPick() {
   const today = new Date().toISOString().slice(0, 10);
   if (STATE.dailyPickShown === today || !STATE.movies.length) return;
 
-  // Deterministic random using date as seed
   const seed = today.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
   const pick = STATE.movies[seed % STATE.movies.length];
   if (!pick) return;
@@ -3268,14 +3273,47 @@ function showDailyPick() {
   STATE.dailyPickShown = today;
   saveConfig();
 
-  $('daily-title').textContent = pick.title || '?';
-  $('daily-meta').textContent = `⭐ ${pick.rating}  |  ${pick.year}`;
+  // Poster
+  const posterWrap = $('daily-poster-wrap');
+  posterWrap.innerHTML = '';
+  if (pick.poster) {
+    const img = document.createElement('img');
+    img.src = pick.poster;
+    img.alt = pick.title;
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:12px;';
+    posterWrap.appendChild(img);
+  } else {
+    posterWrap.innerHTML = '<div class="daily-poster-placeholder">🎬</div>';
+  }
 
+  // Backdrop
+  if (pick.poster) {
+    $('daily-backdrop').style.backgroundImage = `url(${pick.poster})`;
+  }
+
+  // Info
+  $('daily-title').textContent = pick.title || '?';
+  $('daily-meta').innerHTML = `
+    <span class="daily-rating" style="background:${ratingBg(pick.rating)};color:${ratingFg(pick.rating)}">⭐ ${pick.rating}</span>
+    <span class="daily-year">📅 ${pick.year || '?'}</span>
+    ${pick.genre ? `<span class="daily-genre">${pick.genre.split(',')[0].trim()}</span>` : ''}
+  `;
+  $('daily-desc').textContent = (pick.description || '').slice(0, 120) + '...';
+
+  // Show
   const modal = $('daily-modal');
   modal.classList.remove('hidden');
+  setTimeout(() => $('daily-card').classList.add('daily-card-in'), 50);
 
-  $('btn-daily-detail').onclick = () => { modal.classList.add('hidden'); showDetailPage(pick); };
-  $('btn-daily-skip').onclick   = () => { modal.classList.add('hidden'); };
+  const close = () => {
+    $('daily-card').classList.remove('daily-card-in');
+    setTimeout(() => modal.classList.add('hidden'), 300);
+  };
+
+  $('btn-daily-detail').onclick = () => { close(); setTimeout(() => showDetailPage(pick), 320); };
+  $('btn-daily-skip').onclick   = close;
+  $('btn-daily-close').onclick  = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -5096,6 +5134,30 @@ async function loadScreeningRoom() {
   const root = $('screening-root');
   if (!root) return;
 
+  // Kiểm tra cache còn hợp lệ không (đúng tuần)
+  const getWeekKey = () => {
+    const d = new Date();
+    const jan1 = new Date(d.getFullYear(), 0, 1);
+    const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+    return `${d.getFullYear()}-W${week}`;
+  };
+  const weekKey = getWeekKey();
+
+  if (
+    STATE._srWeekMovies &&
+    STATE._srRerollWeek === weekKey &&
+    STATE._srWeekMovies.ordered?.length
+  ) {
+    // Dùng cache, không fetch lại
+    const today = new Date();
+    const ordered = STATE._srWeekMovies.ordered.map(w => ({
+      ...w,
+      date: new Date(w.date),
+    }));
+    renderScreeningRoom(root, ordered, today);
+    return;
+  }
+
   root.innerHTML = `
     <div class="sr-loading">
       <div class="sr-loading-reel">🎞️</div>
@@ -5154,6 +5216,20 @@ function renderScreeningRoom(root, weekData, today) {
     if (!mon || !sun) return '';
     return `${mon.getDate()}/${mon.getMonth()+1} — ${sun.getDate()}/${sun.getMonth()+1}/${sun.getFullYear()}`;
   })();
+
+  const getWeekKey = () => {
+    const d = new Date();
+    const jan1 = new Date(d.getFullYear(), 0, 1);
+    const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+    return `${d.getFullYear()}-W${week}`;
+  };
+  const weekKey = getWeekKey();
+  if (STATE._srRerollWeek !== weekKey) STATE._srRerollCount = 0;
+  const remaining = 3 - (STATE._srRerollCount || 0);
+  const refreshLabel = remaining > 0
+    ? `🔄 Đổi danh sách (còn ${remaining} lần)`
+    : `🚫 Hết lượt tuần này`;
+
   header.innerHTML = `
     <div class="sr-header-left">
       <div class="sr-header-icon">🎬</div>
@@ -5162,7 +5238,10 @@ function renderScreeningRoom(root, weekData, today) {
         <div class="sr-header-sub">Lịch chiếu tuần này · ${weekStr}</div>
       </div>
     </div>
-    <button class="sr-refresh-btn" id="sr-refresh-btn">🔄 Đổi danh sách</button>`;
+    <button class="sr-refresh-btn" id="sr-refresh-btn"
+      ${remaining <= 0 ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>
+      ${refreshLabel}
+    </button>`;
   root.appendChild(header);
 
 
@@ -5317,8 +5396,37 @@ function renderScreeningRoom(root, weekData, today) {
   
   // Refresh button
   root.querySelector('#sr-refresh-btn')?.addEventListener('click', async () => {
-    // Bump a re-roll seed stored in memory
+    const MAX_REROLL = 3;
+
+    const getWeekKey = () => {
+      const d = new Date();
+      const jan1 = new Date(d.getFullYear(), 0, 1);
+      const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+      return `${d.getFullYear()}-W${week}`;
+    };
+
+    const weekKey = getWeekKey();
+    if (STATE._srRerollWeek !== weekKey) {
+      STATE._srRerollWeek = weekKey;
+      STATE._srRerollCount = 0;
+    }
+
+    if ((STATE._srRerollCount || 0) >= MAX_REROLL) {
+      showToast('Đã dùng hết 3 lần tuần này! Reset vào thứ Hai tới 🎬', 'info', '⛔');
+      return;
+    }
+
     STATE._srRerollCount = (STATE._srRerollCount || 0) + 1;
+    const remaining = MAX_REROLL - STATE._srRerollCount;
+    saveConfig();
+
+    showToast(
+      remaining > 0
+        ? `Đã đổi danh sách! Còn ${remaining} lần tuần này 🎲`
+        : `Đã dùng hết 3 lần tuần này! Reset vào thứ Hai tới 🎬`,
+      'add', '🔄'
+    );
+
     await loadScreeningRoomWithOffset(STATE._srRerollCount);
   });
 }
@@ -5352,6 +5460,14 @@ async function loadScreeningRoomWithOffset(offset) {
   const ordered = [1,2,3,4,5,6,0].map(dow =>
     weekMovies.find(w => w.cfg.day === dow)
   ).filter(Boolean);
+
+  // Lưu lại
+  STATE._srWeekMovies = { offset, ordered: ordered.map(w => ({
+    cfg: w.cfg,
+    movie: w.movie,
+    date: w.date.toISOString(),
+  }))};
+  saveConfig();
 
   renderScreeningRoom(root, ordered, today);
 }
