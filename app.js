@@ -210,14 +210,25 @@ function loadStorage() {
     STATE.otdType        = cfg.otdType        || '';
     STATE.dailyPickShown = cfg.dailyPickShown || '';
     STATE.filterCollapsed= cfg.filterCollapsed|| false;
-    STATE._srRerollCount = cfg.srRerollCount || 0;
-    STATE._srRerollWeek  = cfg.srRerollWeek  || '';
-    STATE._srWeekMovies  = cfg.srWeekMovies  || null;
+    STATE._srRerollCount = cfg.srRerollCount  || 0;
+    STATE._srRerollWeek  = cfg.srRerollWeek   || '';
+    STATE._srWeekMovies  = cfg.srWeekMovies   || null;
   } catch(e) {}
 
   try {
     STATE.watchlist = JSON.parse(localStorage.getItem('imdb_watchlist') || '{}');
   } catch(e) { STATE.watchlist = {}; }
+
+  // User ID riêng cho từng máy
+  STATE.userId = localStorage.getItem('imdb_user_id');
+  if (!STATE.userId) {
+    STATE.userId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem('imdb_user_id', STATE.userId);
+  }
+}
+
+function getUserSeed() {
+  return (STATE.userId || 'default').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
 }
 
 function saveConfig() {
@@ -1404,7 +1415,9 @@ function renderDetailBody(body, m, d) {
   
 
   // Vietsub search
-  
+  renderDirectorsCut(right, m, d);
+  renderFilmedLocations(right, m, d);
+  renderFilmMusic(right, m, d)
   
 
   right.appendChild(el('hr', 'detail-divider'));
@@ -1437,6 +1450,7 @@ function renderDetailBody(body, m, d) {
     right.appendChild(castSec);
   }
 
+  
   // Similar movies
   if (d.similar?.length) {
     const simSec = el('div', 'h-scroll-section');
@@ -5118,12 +5132,19 @@ async function fetchScreeningMovie(cfg, dateSeed) {
       params['with_original_language'] = cfg.langs[langIdx];
     }
 
-    const data = await tmdb(`/discover/${mediaType}`, params);
-    const results = data.results || [];
+    const [p1, p2, p3] = await Promise.all([
+      tmdb(`/discover/${mediaType}`, { ...params, page: 1 }),
+      tmdb(`/discover/${mediaType}`, { ...params, page: 2 }),
+      tmdb(`/discover/${mediaType}`, { ...params, page: 3 }),
+    ]);
+    const results = [
+      ...(p1.results || []),
+      ...(p2.results || []),
+      ...(p3.results || []),
+    ];
     if (!results.length) return null;
 
-    // Pick deterministically using date seed
-    const idx = seededRandIdx(dateSeed, Math.min(results.length, 20));
+    const idx = seededRandIdx(dateSeed, Math.min(results.length, 60));
     return normalizeMovie(results[idx], mediaType);
   } catch(e) {
     return null;
@@ -5190,7 +5211,7 @@ async function loadScreeningRoom() {
       const d = new Date(monday);
       const daysFromMon = cfg.day === 0 ? 6 : cfg.day - 1;
       d.setDate(monday.getDate() + daysFromMon);
-      const dateSeed = d.getFullYear() * 10000 + (d.getMonth()+1) * 100 + d.getDate() + cfg.day * 999;
+      const dateSeed = d.getFullYear() * 10000 + (d.getMonth()+1) * 100 + d.getDate() + cfg.day * 999 + getUserSeed();
       const movie = await fetchScreeningMovie(cfg, dateSeed);
       return { cfg, movie, date: new Date(d) };
     })
@@ -5451,7 +5472,7 @@ async function loadScreeningRoomWithOffset(offset) {
       const daysFromMon = cfg.day === 0 ? 6 : cfg.day - 1;
       d.setDate(monday.getDate() + daysFromMon);
       // Offset changes the seed to get different movies
-      const dateSeed = d.getFullYear() * 10000 + (d.getMonth()+1) * 100 + d.getDate() + cfg.day * 999 + offset * 1337;
+      const dateSeed = d.getFullYear() * 10000 + (d.getMonth()+1) * 100 + d.getDate() + cfg.day * 999 + getUserSeed() + offset * 1337;
       const movie = await fetchScreeningMovie(cfg, dateSeed);
       return { cfg, movie, date: new Date(d) };
     })
@@ -6117,7 +6138,7 @@ function updateFeedCountdown() {
    CINEMATIC UNIVERSE BUILDER — Web Graph 3 Layers
 ══════════════════════════════════════════════════════════════ */
 
-async function showCinematicUniverse(centerName, centerType = 'person') {
+async function showCinematicUniverse(centerName, centerType = 'person', filmLimit = 30) {
   // Tạo overlay
   const overlay = document.createElement('div');
   overlay.id = 'universe-overlay';
@@ -6144,6 +6165,36 @@ async function showCinematicUniverse(centerName, centerType = 'person') {
     <div style="display:flex;gap:8px;padding:8px 16px;background:#060a11;
       border-bottom:1px solid #1e2d45;flex-shrink:0;flex-wrap:wrap;align-items:center;">
       <span style="font-size:0.75rem;color:#7a8fa8;">Chú thích:</span>
+      <div style="display:flex;gap:8px;padding:8px 16px;background:#060a11;
+        border-bottom:1px solid #1e2d45;flex-shrink:0;flex-wrap:wrap;align-items:center;">
+        <span style="font-size:0.75rem;color:#7a8fa8;">Lọc kết nối:</span>
+        <button class="univ-filter active" data-layer="all"
+          style="padding:4px 12px;border-radius:20px;border:1px solid #e8a020;background:#e8a02022;color:#e8a020;font-size:0.75rem;cursor:pointer;">
+          Tất cả
+        </button>
+        <button class="univ-filter" data-layer="1"
+          style="padding:4px 12px;border-radius:20px;border:1px solid #2980d4;background:transparent;color:#7a8fa8;font-size:0.75rem;cursor:pointer;">
+          🎬 Phim của họ
+        </button>
+        <button class="univ-filter" data-layer="2"
+          style="padding:4px 12px;border-radius:20px;border:1px solid #44ff88;background:transparent;color:#7a8fa8;font-size:0.75rem;cursor:pointer;">
+          🎭 Diễn viên chung
+        </button>
+        <button class="univ-filter" data-layer="3"
+          style="padding:4px 12px;border-radius:20px;border:1px solid #888;background:transparent;color:#7a8fa8;font-size:0.75rem;cursor:pointer;">
+          🔗 Phim liên kết
+        </button>
+        <label style="font-size:0.75rem;color:#7a8fa8;display:flex;align-items:center;gap:6px;margin-left:16px;border-left:1px solid #1e2d45;padding-left:16px;">
+          Hiện:
+          <select id="univ-film-limit"
+            style="background:#0f1623;border:1px solid #1e2d45;color:#e8a020;padding:3px 8px;border-radius:6px;font-size:0.75rem;cursor:pointer;">
+            <option value="30" ${filmLimit===30?'selected':''}>30 phim</option>
+            <option value="50" ${filmLimit===50?'selected':''}>50 phim</option>
+            <option value="80" ${filmLimit===80?'selected':''}>80 phim</option>
+            <option value="999" ${filmLimit===999?'selected':''}>Tất cả</option>
+          </select>
+        </label>
+      </div>
       <span style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#e8302a;">
         <svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="#e8302a"/></svg> Trung tâm
       </span>
@@ -6167,6 +6218,11 @@ async function showCinematicUniverse(centerName, centerType = 'person') {
 
   document.body.appendChild(overlay);
   document.getElementById('univ-close').addEventListener('click', () => overlay.remove());
+  document.getElementById('univ-film-limit').addEventListener('change', (e) => {
+    const limit = e.target.value;
+    overlay.remove();
+    showCinematicUniverse(centerName, centerType, parseInt(limit));
+  });
 
   // Fetch data
   const person = await fetchPersonDetail(centerName);
@@ -6202,10 +6258,27 @@ async function showCinematicUniverse(centerName, centerType = 'person') {
   });
 
   // Layer 1: Phim của người này
-  const films = (person.isDirector ? person.directed : person.filmography)
+  // Nếu thiếu data, fetch thêm trực tiếp từ TMDB
+  let allFilms = (person.isDirector ? person.directed : person.filmography) || [];
+
+  if (allFilms.length < filmLimit && person.tmdb_id) {
+    try {
+      const credits = await tmdb(`/person/${person.tmdb_id}/movie_credits`);
+      const extra = (credits.cast || credits.crew || [])
+        .filter(m => m.poster_path && m.vote_count > 100)
+        .map(m => normalizeMovie(m, 'movie'));
+      // Merge, tránh trùng
+      const existingIds = new Set(allFilms.map(f => f.tmdb_id));
+      extra.forEach(m => { if (!existingIds.has(m.tmdb_id)) allFilms.push(m); });
+    } catch(e) {}
+  }
+
+  const films = allFilms
     .filter(m => m.tmdb_id)
     .sort((a, b) => bayesianRating(b.rating, b.vote_count) - bayesianRating(a.rating, a.vote_count))
-    .slice(0, 30); // layer 1: tối đa 30 phim
+    .slice(0, filmLimit);
+
+  
 
   const layer1Films = films.filter(m => m.tmdb_id);
 
@@ -6228,7 +6301,7 @@ async function showCinematicUniverse(centerName, centerType = 'person') {
     `Lớp 1: ${layer1Films.length} phim · Đang tải lớp 2...`;
 
   // Layer 2 & 3: Diễn viên của từng phim → phim khác của họ
-  const castFetches = layer1Films.slice(0, 15).map(async (film) => {
+  const castFetches = layer1Films.slice(0, filmLimit).map(async (film) => {
     if (!STATE.tmdbKey || !film.tmdb_id) return;
     try {
       const mt = film.mediaType || 'movie';
@@ -6312,19 +6385,19 @@ function renderUniverseGraph(overlay, nodes, links, centerNode) {
   // Force simulation
   const sim = d3.forceSimulation(nodes)
     .force('link', d3.forceLink(cleanLinks).id(d => d.id).distance(d => {
-      if (d.layer === 1) return 120;
-      if (d.layer === 2) return 90;
-      return 70;
-    }).strength(0.4))
+      if (d.layer === 1) return 180;
+      if (d.layer === 2) return 140;
+      return 100;
+    }).strength(0.3))
     .force('charge', d3.forceManyBody().strength(d => {
-      if (d.type === 'center') return -800;
-      if (d.layer === 1) return -300;
-      if (d.layer === 2) return -150;
-      return -80;
+      if (d.type === 'center') return -1200;
+      if (d.layer === 1) return -500;
+      if (d.layer === 2) return -250;
+      return -120;
     }))
     .force('center', d3.forceCenter(W / 2, H / 2))
-    .force('collision', d3.forceCollide(d => d.r + 8))
-    .alphaDecay(0.025);
+    .force('collision', d3.forceCollide(d => d.r + 18))
+    .alphaDecay(0.02);
 
   // Zoom
   const zoomG = svg.append('g');
@@ -6368,12 +6441,43 @@ function renderUniverseGraph(overlay, nodes, links, centerNode) {
     .data(cleanLinks).enter().append('line')
     .attr('stroke', d => linkColor(d))
     .attr('stroke-width', d => d.layer === 1 ? 1.5 : d.layer === 2 ? 1 : 0.7)
-    .attr('stroke-dasharray', d => d.layer === 3 ? '4,3' : null);
+    .attr('stroke-dasharray', d => d.layer === 3 ? '4,3' : null)
+    .style('opacity', d => d.layer === 3 ? 0 : 1);
 
+    // Filter buttons
+  overlay.querySelectorAll('.univ-filter').forEach(btn => {
+    btn.addEventListener('click', () => {
+      overlay.querySelectorAll('.univ-filter').forEach(b => {
+        b.style.background = 'transparent';
+        b.style.color = '#7a8fa8';
+      });
+      btn.style.background = btn.dataset.layer === 'all' ? '#e8a02022'
+        : btn.dataset.layer === '1' ? '#2980d422'
+        : btn.dataset.layer === '2' ? '#44ff8822' : '#88888822';
+      btn.style.color = btn.dataset.layer === 'all' ? '#e8a020'
+        : btn.dataset.layer === '1' ? '#2980d4'
+        : btn.dataset.layer === '2' ? '#44ff88' : '#aaa';
+
+      const activeLayer = btn.dataset.layer;
+      link.style('opacity', d => {
+        if (activeLayer === 'all') return 1;
+        return String(d.layer) === activeLayer ? 1 : 0.05;
+      });
+      nodeG.style('opacity', d => {
+        if (activeLayer === 'all') return 1;
+        if (d.type === 'center') return 1;
+        const layerNum = parseInt(activeLayer);
+        if (d.layer === layerNum) return 1;
+        if (d.layer === layerNum - 1) return 1; // giữ node cha
+        return 0.1;
+      });
+    });
+  });
   // Node groups
   const nodeG = zoomG.append('g').selectAll('g')
     .data(nodes).enter().append('g')
     .style('cursor', 'pointer')
+    .style('opacity', d => d.layer === 3 ? 0 : 1)
     .call(d3.drag()
       .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
       .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
@@ -6727,4 +6831,1577 @@ function wrapText(ctx, text, x, y, maxW, lineH) {
     }
   }
   ctx.fillText(line, x, y + lines * lineH);
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   DIRECTOR'S CUT PANEL
+══════════════════════════════════════════════════════════════ */
+
+const DC_TECHNIQUES = {
+  // Genre → kỹ thuật đặc trưng
+  'Action':      ['Continuity Editing','Practical Stunts','Wire-Fu','Shaky Cam','Dutch Angle'],
+  'Horror':      ['Jump Cut','Negative Space','Diegetic Sound','Low-Key Lighting','The Slow Burn'],
+  'Sci-Fi':      ['Practical Effects','Matte Painting','Forced Perspective','Non-Linear Narrative','World-Building'],
+  'Drama':       ['Long Take','Close-Up Psychology','Subtext Dialogue','Naturalistic Lighting','Character Arc'],
+  'Thriller':    ['MacGuffin','Red Herring','Unreliable Narrator','Cross-Cutting','Suspense vs Surprise'],
+  'Comedy':      ['Callback','Rule of Three','Deadpan','Physical Comedy','Timing'],
+  'Romance':     ['Chemistry Blocking','The Look','Parallel Editing','Leitmotif','Slow Burn'],
+  'Animation':   ['12 Principles of Animation','Squash & Stretch','Anticipation','Staging','Follow Through'],
+  'Documentary': ['Fly-on-the-Wall','Talking Head','Vérité','Archival Footage','Voice-Over'],
+  'Fantasy':     ['Practical Magic','Miniatures','Forced Perspective','Production Design','Costume Language'],
+  'Crime':       ['MacGuffin','Non-Linear Narrative','Film Noir Lighting','Anti-Hero','Moral Ambiguity'],
+  'History':     ['Period Authenticity','Mise-en-Scène','Epic Scale','Archival Recreation','Costume Language'],
+};
+
+const DC_TECHNIQUE_DETAIL = {
+
+  'Long Take': {
+    icon: '🎥',
+    level: 'trung cấp',
+    oneliner: 'Cảnh quay liên tục không cắt — đạo diễn "biểu diễn" cùng diễn viên trong thời gian thật.',
+    why: `Khi đạo diễn không cắt cảnh, họ đang nói với khán giả: <em>"Đừng thoát ra. Ở lại đây. Cảm nhận thời gian trôi cùng nhân vật."</em>
+    
+    Cut là "lối thoát" — mỗi lần cắt, não khán giả được reset nhẹ. Long take loại bỏ lối thoát đó. Kết quả: tension tích lũy, cảm giác thực tế tăng lên, và khi có gì đó xảy ra trong cảnh dài — nó có trọng lượng gấp đôi vì ta đã "sống" cùng nó.`,
+    how: `Về mặt tâm lý: khán giả bắt đầu lo lắng rằng cảnh sẽ bị hỏng — diễn viên vấp lời, camera lung lay. Sự lo lắng này vô tình tạo ra <em>engagement</em> thật sự, không phải fake drama từ editing.
+
+    Về mặt kỹ thuật: long take buộc đạo diễn phải "choreograph" toàn bộ cảnh như một vở kịch — diễn viên, camera, ánh sáng, âm thanh phải đồng bộ hoàn hảo trong thời gian thật. Đây là lý do long take thường thấy ở đạo diễn tự tin nhất.`,
+    spot: `Trong phim bạn đang xem: để ý khi nào bạn bắt đầu <em>lo lắng rằng cảnh sẽ kết thúc</em> — đó là lúc long take đang làm việc. Đếm thử xem cảnh dài bao nhiêu giây mà không cắt. Hỏi: đạo diễn muốn ta cảm thấy gì trong khoảng thời gian đó?`,
+    examples: [
+      {
+        film: 'Birdman (2014) — Alejandro González Iñárritu',
+        detail: 'Cả phim được dựng như 1 long take liên tục. Lý do: Riggan Thomson (Michael Keaton) là diễn viên đang mất kiểm soát cuộc đời — không được phép "cắt" và làm lại. Long take = metaphor cho sự không thể thoát khỏi hiện tại của nhân vật.',
+      },
+      {
+        film: 'Children of Men (2006) — Alfonso Cuarón',
+        detail: 'Cảnh chiến tranh trong xe hơi và cảnh trận đánh ở cuối phim là long take. Lý do: chiến tranh không có "cut" — nó xảy ra liên tục xung quanh bạn. Long take tạo ra trải nghiệm tương đương cho khán giả.',
+      },
+      {
+        film: 'The Shining (1980) — Stanley Kubrick',
+        detail: 'Kubrick dùng Steadicam theo sau Danny trên xe đạp qua các hành lang. Lý do: ta đang theo đuổi đứa trẻ — nhưng cũng cảm thấy như có gì đó đang theo đuổi ta. Long take tạo ra cả hai cảm giác cùng lúc.',
+      },
+    ],
+    exercise: `Trong phim này, thử tắt màn hình và chỉ nghe âm thanh khi có cảnh dài — bạn có còn cảm nhận được tension không? Nếu có, đạo diễn đang dùng sound design hỗ trợ long take. Nếu không, visual là tất cả.`,
+    deeper: `Tại sao Hollywood mainstream gần như không dùng long take? Vì editing = kiểm soát. Long take = tin tưởng diễn viên và khán giả. Hỏi: đạo diễn phim này có xu hướng nào?`,
+    connects_to: ['Mise-en-Scène', 'Diegetic Sound', 'Continuity Editing'],
+  },
+
+  'Dutch Angle': {
+    icon: '📐',
+    level: 'cơ bản',
+    oneliner: 'Camera nghiêng — thế giới đang mất thăng bằng, và khán giả cảm thấy điều đó trong cơ thể.',
+    why: `Con người có bản năng sinh tồn rất nhạy với trọng lực. Khi thấy đường chân trời nghiêng, não tự động kích hoạt phản xạ lo lắng — giống như khi bạn đang leo núi và mặt đất xiên.
+
+    Đạo diễn khai thác phản xạ này một cách có chủ đích: Dutch angle không "nói" với lý trí khán giả — nó nói thẳng vào phản xạ thần kinh. Đó là lý do hiệu quả ngay cả khi khán giả biết đó là phim.`,
+    how: `Mắt người luôn tìm kiếm đường nằm ngang để định hướng. Khi không tìm thấy → não vào trạng thái alert nhẹ, liên tục "cố gắng" chỉnh lại hình ảnh. Sự mệt mỏi nhỏ này tích lũy thành cảm giác bất ổn, không an toàn.
+
+    Chú ý: Dutch angle <em>lạm dụng</em> sẽ mất tác dụng — não học cách ignore. Đạo diễn tốt chỉ dùng đúng khoảnh khắc nhân vật đang thật sự mất ổn định về tâm lý.`,
+    spot: `Khi bạn thấy cảnh quay nghiêng: hỏi ngay — <em>nhân vật đang nghĩ gì lúc này?</em> Dutch angle thường xuất hiện chính xác tại khoảnh khắc nhân vật nhận ra sự thật, mất kiểm soát, hoặc đưa ra quyết định sai. Không phải để "trông đẹp" — là để đánh dấu trạng thái tâm lý.`,
+    examples: [
+      {
+        film: 'The Third Man (1949) — Carol Reed',
+        detail: 'Gần như toàn bộ phim được quay với Dutch angle. Lý do: Vienna sau thế chiến là thế giới không có đạo đức thẳng hàng nào cả — không ai là hoàn toàn tốt hay xấu. Camera nghiêng = thế giới quan của bộ phim.',
+      },
+      {
+        film: 'Batman (1966 TV series) — các đạo diễn',
+        detail: 'Dùng Dutch angle cho mọi cảnh của villain. Lý do cố ý buồn cười: tạo contrast với Batman luôn được quay thẳng. Đây là ví dụ Dutch angle dùng như parody — tự nhận thức về chính nó.',
+      },
+      {
+        film: 'Inception (2010) — Christopher Nolan',
+        detail: 'Nolan gần như không dùng Dutch angle dù phim về giấc mơ — một lựa chọn có chủ đích. Lý do: nhân vật KHÔNG biết mình đang trong giấc mơ, nên thế giới phải trông "bình thường". Dutch angle sẽ phá vỡ logic này.',
+      },
+    ],
+    exercise: `Lần này xem phim, mỗi khi thấy Dutch angle — pause và hỏi: "Nếu quay thẳng, cảnh này có khác không?" Nếu câu trả lời là "không khác mấy" → đó là Dutch angle lười. Nếu "khác hoàn toàn" → đạo diễn biết mình đang làm gì.`,
+    deeper: `Một số đạo diễn như Yasujirō Ozu cố ý không bao giờ dùng Dutch angle dù phim rất nhiều drama. Tại sao? Ozu tin rằng camera là "quan sát viên trung lập" — không được phép có cảm xúc riêng.`,
+    connects_to: ['Low-Key Lighting', 'Negative Space', 'Mise-en-Scène'],
+  },
+
+  'MacGuffin': {
+    icon: '🎭',
+    level: 'cơ bản',
+    oneliner: 'Vật nhân vật muốn — quan trọng với họ, không quan trọng với câu chuyện thật sự.',
+    why: `Hitchcock nói: "MacGuffin là thứ nhân vật tìm kiếm. Khán giả không cần biết nó là gì."
+    
+    Tại sao? Vì phim hay không phải về vật — mà về <em>con người khi đang tìm kiếm</em>. MacGuffin là cái cớ để đặt nhân vật vào tình huống bộc lộ tính cách. Nếu thay MacGuffin bằng thứ khác mà phim vẫn có nghĩa như cũ → đó là MacGuffin thật sự.`,
+    how: `MacGuffin hoạt động vì khán giả <em>mượn</em> cảm xúc của nhân vật. Ta không thật sự muốn cái vali đó, nhưng vì nhân vật muốn cháy bỏng → ta muốn theo. 
+    
+    Test MacGuffin: thay "vali bí ẩn" bằng "tài liệu bí mật" hay "USB drive" — phim có thay đổi không? Nếu không → MacGuffin đang làm đúng việc của nó. Nếu có → đạo diễn đã vô tình làm MacGuffin trở thành plot device thật sự.`,
+    spot: `Hỏi ngay từ đầu phim: <em>"Nhân vật muốn gì?"</em> Ghi nhớ câu trả lời đó. Đến cuối phim, hỏi lại: nó có quan trọng nữa không? Có được giải thích không? Nếu phim "quên" mất nó ở giữa chừng → đó là MacGuffin hoàn hảo.`,
+    examples: [
+      {
+        film: 'Pulp Fiction (1994) — Quentin Tarantino',
+        detail: 'Cái vali phát sáng màu vàng. Không bao giờ được giải thích là gì. Tarantino cố ý — vì phim không phải về nội dung vali, mà về những người xung quanh nó và đạo đức của họ.',
+      },
+      {
+        film: 'Inglourious Basterds (2009) — Quentin Tarantino',
+        detail: 'Kế hoạch ám sát Hitler là MacGuffin — nhưng Tarantino đã khéo léo biến nó thành plot thật ở hồi 3. Điều này tạo ra surprise vì ta đã expect MacGuffin, nhưng lại xảy ra thật.',
+      },
+      {
+        film: 'Citizen Kane (1941) — Orson Welles',
+        detail: '"Rosebud" là MacGuffin nghịch đảo — ta không biết nghĩa của nó suốt phim, rồi được giải thích ở cuối. Nhưng Welles nói thẳng: Rosebud không quan trọng. Hành trình tìm hiểu về Kane mới là phim.',
+      },
+    ],
+    exercise: `Viết ra 1 câu: "Nhân vật chính trong phim này muốn [X]." Đến giữa phim, viết lại: "[X] vẫn quan trọng, hay nhân vật đã thay đổi và muốn [Y] rồi?" Sự dịch chuyển đó — nếu có — là character arc thật sự của phim.`,
+    deeper: `Nếu MacGuffin được giải thích và quan trọng về mặt plot → nó không còn là MacGuffin nữa, mà là plot device. Điều đó không xấu — chỉ là khác. Phim nào đang dùng cái gì?`,
+    connects_to: ['Non-Linear Narrative', 'Red Herring', 'Character Arc'],
+  },
+
+  'Non-Linear Narrative': {
+    icon: '🔀',
+    level: 'nâng cao',
+    oneliner: 'Phá vỡ trật tự thời gian để khán giả cảm nhận câu chuyện theo cách nhân vật đang sống nó — không phải theo cách nó xảy ra.',
+    why: `Tại sao không kể thẳng từ đầu đến cuối? Vì cuộc sống không hoạt động theo tuyến tính trong trí nhớ và cảm xúc con người. Ta nhớ lại quá khứ, dự đoán tương lai, và hiện tại luôn bị tô màu bởi những gì ta đã biết.
+    
+    Non-linear narrative tái tạo <em>cách não người xử lý trải nghiệm</em> — không phải cách máy quay ghi lại sự kiện. Kết quả: khán giả không chỉ xem câu chuyện, mà <em>trải nghiệm</em> nó từ bên trong.`,
+    how: `Não người luôn cố gắng tìm pattern và điền vào chỗ trống. Non-linear narrative khai thác điều này: ta xem cảnh B trước cảnh A → não tự động hỏi "tại sao B xảy ra?" → khi thấy A, cảm giác "à ha!" xuất hiện — satisfaction không có nếu kể thẳng.
+    
+    Có nhiều loại: <em>In media res</em> (bắt đầu giữa chuyện), <em>reverse chronology</em> (kể ngược), <em>parallel timelines</em> (nhiều dòng thời gian), <em>unreliable memory</em> (ký ức không chính xác).`,
+    spot: `Khi timeline xáo trộn, hỏi: <em>"Đạo diễn muốn ta biết gì trước, và muốn ta phát hiện ra gì sau?"</em> Thứ tự tiết lộ thông tin là lựa chọn có chủ đích nhất trong phim non-linear. Thứ tự đó nói lên thông điệp của phim.`,
+    examples: [
+      {
+        film: 'Memento (2000) — Christopher Nolan',
+        detail: 'Kể ngược hoàn toàn vì nhân vật bị mất trí nhớ ngắn hạn. Khán giả ở đúng trạng thái tâm lý của Leonard — luôn biết ít hơn những gì vừa xảy ra. Đây là non-linear narrative phục vụ character, không phải phục vụ plot twist.',
+      },
+      {
+        film: 'Arrival (2016) — Denis Villeneuve',
+        detail: 'Ta nghĩ "flashback về con gái đã mất" là backstory — thật ra là "flash-forward" về tương lai chưa xảy ra. Nhân vật Louise không sống theo tuyến tính như chúng ta — đây là non-linear không phải để clever, mà để buộc khán giả sống trong perception của nhân vật.',
+      },
+      {
+        film: 'Rashomon (1950) — Akira Kurosawa',
+        detail: 'Cùng một sự kiện kể 4 lần theo 4 góc nhìn khác nhau. Non-linear ở đây không phải về thời gian mà về perspective — không có version nào là "đúng". Đây là non-linear triết học, không phải kỹ thuật.',
+      },
+    ],
+    exercise: `Vẽ timeline của phim trên giấy — đặt các cảnh theo thứ tự thời gian thật. So sánh với thứ tự đạo diễn chọn kể. Hỏi: thông tin nào được tiết lộ "muộn" hơn so với khi nó xảy ra? Lý do muộn đó là gì — để surprise, để empathy, hay để ý nghĩa thay đổi?`,
+    deeper: `Có đạo diễn dùng non-linear chỉ để "trông phức tạp" mà không có lý do cảm xúc. Test: nếu kể lại phim theo thứ tự tuyến tính, có mất đi gì không? Nếu không mất gì quan trọng → non-linear đó là decorative, không phải structural.`,
+    connects_to: ['Unreliable Narrator', 'MacGuffin', 'Character Arc'],
+  },
+
+  'Mise-en-Scène': {
+    icon: '🎬',
+    level: 'nâng cao',
+    oneliner: 'Mọi thứ trong khung hình đều là ngôn ngữ — set, ánh sáng, vị trí nhân vật, màu sắc quần áo — không có gì vô tình.',
+    why: `Từ "mise-en-scène" (tiếng Pháp: "đặt vào cảnh") là câu trả lời cho câu hỏi: điện ảnh khác gì văn học và radio? Câu trả lời là: <em>visual storytelling</em> — kể chuyện bằng những gì ta thấy, không phải những gì ta nghe.
+    
+    Đạo diễn giỏi không "trang trí" set — họ <em>thiết kế thông tin</em>. Mỗi vật trong frame là một câu. Tổng hợp lại thành paragraph mà khán giả đọc mà không biết mình đang đọc.`,
+    how: `Não người xử lý visual information trước khi xử lý ngôn ngữ. Ta "cảm" màu sắc và bố cục trước khi "hiểu" dialogue. Mise-en-scène tận dụng lớp xử lý sơ cấp này để cài thông điệp vào trước khi lý trí kịp filter.
+    
+    4 thành phần chính: <em>set/location</em> (bối cảnh nói gì về nhân vật?), <em>lighting</em> (ai được chiếu sáng, ai bị bóng tối?), <em>costume & makeup</em> (trạng thái nhân vật qua quần áo), <em>blocking</em> (ai đứng đâu trong không gian quyền lực?).`,
+    spot: `Thử xem 30 giây phim mà không nghe âm thanh. Bạn có hiểu được ai là nhân vật chính, ai có quyền lực, cảnh này vui hay buồn không? Nếu có → mise-en-scène đang làm việc tốt. Nếu không hiểu gì → phim đó phụ thuộc quá nhiều vào dialogue.`,
+    examples: [
+      {
+        film: 'Parasite (2019) — Bong Joon-ho',
+        detail: 'Nhà giàu: ánh sáng tự nhiên, không gian ngang, kính và bê tông. Nhà nghèo: ánh sáng nhân tạo, không gian dọc (xuống hầm), bê tông ẩm ướt. Production designer và Bong thiết kế để ta "cảm" giai cấp trước khi dialogue giải thích.',
+      },
+      {
+        film: 'The Grand Budapest Hotel (2014) — Wes Anderson',
+        detail: 'Anderson kiểm soát mise-en-scène đến mức obsessive: mọi vật đều symmetrical, màu pastel được code theo từng era của phim. Đây là mise-en-scène như authorial signature — ta nhận ra Anderson chỉ qua 5 giây hình ảnh.',
+      },
+      {
+        film: 'There Will Be Blood (2007) — Paul Thomas Anderson',
+        detail: 'Daniel Plainview luôn ở vị trí cao hơn người khác trong frame — đứng trên đồi, ngồi đầu bàn, nhìn xuống. Mise-en-scène phản ánh sự thật tâm lý: ông ta luôn thấy người khác là thấp hơn mình.',
+      },
+    ],
+    exercise: `Chọn 3 cảnh bất kỳ trong phim này. Với mỗi cảnh: liệt kê 5 vật/yếu tố visual bạn thấy. Với mỗi vật, hỏi: "Vật này ở đây vì mục đích plot, hay vì mục đích ý nghĩa?" Sự chênh lệch giữa hai loại cho biết đạo diễn chú trọng mise-en-scène đến đâu.`,
+    deeper: `So sánh mise-en-scène đầu phim và cuối phim: có gì thay đổi? Cùng một set nhưng ánh sáng khác, costume khác? Sự thay đổi đó là character arc được kể bằng visual, không cần thoại.`,
+    connects_to: ['Production Design', 'Low-Key Lighting', 'Costume Language', 'Negative Space'],
+  },
+
+  'Subtext Dialogue': {
+    icon: '💬',
+    level: 'trung cấp',
+    oneliner: 'Nhân vật nói về thời tiết nhưng đang nói về tình yêu — lớp nghĩa thứ hai nằm dưới bề mặt của mọi câu thoại.',
+    why: `Người thật không nói thẳng cảm xúc. "Tôi yêu bạn" được nói trực tiếp rất ít trong cuộc sống — thay vào đó ta nói "Cẩn thận khi lái xe nhé," hay "Bạn đã ăn chưa?" Đây là subtext trong cuộc sống thật.
+    
+    Phim tốt bắt chước điều này. Khi nhân vật nói thẳng cảm xúc → cảm giác giả tạo. Khi nói vòng → khán giả phải tự giải mã, và việc giải mã đó tạo ra <em>emotional ownership</em> — ta "tự cảm" thay vì "được cho cảm".`,
+    how: `Subtext hoạt động trên 3 tầng cùng lúc: (1) nhân vật A nói X, (2) nhân vật B nghe Y, (3) khán giả hiểu Z. Sự khác biệt giữa X, Y, và Z tạo ra tension, irony, hoặc pathos mà không cần một dòng exposition nào.
+    
+    Kỹ thuật viết subtext: "Iceberg theory" của Hemingway — nhà văn biết 10 phần của câu chuyện, chỉ viết 1 phần. 9 phần còn lại nằm dưới mặt nước — khán giả cảm nhận được dù không thấy.`,
+    spot: `Khi nhân vật đột nhiên nói về một chủ đề "không liên quan" — thức ăn, thời tiết, công việc — trong một cảnh quan trọng về cảm xúc, đó là subtext. Hỏi: họ đang thật sự nói gì? Thường câu trả lời là chính xác điều ngược lại với những gì họ đang nói về.`,
+    examples: [
+      {
+        film: 'Before Sunrise (1995) — Richard Linklater',
+        detail: 'Jesse và Céline cả phim nói về philosophy, travel, life — không ai nói thẳng "tôi đang yêu bạn". Subtext chạy xuyên suốt: mỗi câu hỏi về cuộc sống là một cách tiếp cận nhau. Ta cảm được tình yêu dù không ai tuyên bố.',
+      },
+      {
+        film: 'In the Mood for Love (2000) — Wong Kar-wai',
+        detail: 'Hai nhân vật không bao giờ thể hiện tình cảm trực tiếp — thậm chí về cuối họ roleplay "nếu vợ/chồng tôi ngoại tình thì sao" để nói về cảm xúc của chính mình. 100% subtext, 0% direct confession.',
+      },
+      {
+        film: 'No Country for Old Men (2007) — Coen Brothers',
+        detail: 'Mọi cuộc hội thoại của Chigurh đều subtext về death và fate. Câu hỏi "Đồng xu này từ 1958 — nó đã đi qua nhiều bàn tay để đến đây. Bạn biết điều đó không?" không phải về đồng xu. Là về định mệnh của nạn nhân.',
+      },
+    ],
+    exercise: `Chọn một cảnh có nhiều dialogue trong phim này. Với mỗi lượt thoại, viết: (a) điều nhân vật nói, (b) điều nhân vật muốn nói nhưng không nói. Nếu (a) = (b) → không có subtext. Nếu (a) ≠ (b) → đó là subtext. Đạo diễn có subtext ở mức nào trong phim này?`,
+    deeper: `Subtext có thể bị phá vỡ khi đạo diễn không tin vào khán giả — họ thêm "on-the-nose dialogue" để giải thích. VD: nhân vật nói "Bạn giống cha tôi quá" thay vì để khán giả tự nhận ra qua hành động. Phim này có moment nào như vậy không?`,
+    connects_to: ['Character Arc', 'Unreliable Narrator', 'The Look'],
+  },
+
+  'Close-Up Psychology': {
+    icon: '👁️',
+    level: 'cơ bản',
+    oneliner: 'Zoom vào mặt người là zoom vào tâm trí họ — đây là thứ điện ảnh có thể làm mà không nghệ thuật nào khác làm được.',
+    why: `Khi ta đứng cách người khác 30cm và nhìn thẳng vào mắt họ — đó là khoảng cách thân mật hoặc đối đầu. Close-up tái tạo khoảng cách này với nhân vật lạ, tạo ra <em>instant intimacy</em>.
+    
+    Não người có vùng xử lý chuyên biệt cho khuôn mặt (fusiform face area). Close-up kích hoạt trực tiếp vùng này — ta đọc microexpression, đọc mắt, đọc cơ mặt trước khi ý thức kịp can thiệp.`,
+    how: `Close-up trả lời câu hỏi quan trọng nhất trong drama: <em>nhân vật cảm thấy gì lúc này?</em> Đây là thông tin mà medium shot và wide shot không thể truyền đạt.
+    
+    Có nhiều loại close-up với mục đích khác nhau: <em>reaction shot</em> (nhân vật nghe tin gì đó), <em>decision shot</em> (nhân vật đang cân nhắc), <em>revelation shot</em> (ta thấy nhân vật nhận ra điều gì đó), <em>deceptive shot</em> (nhân vật đang giấu cảm xúc).`,
+    spot: `Chú ý: đạo diễn cắt close-up <em>khi nào</em>? Không phải "tại sao" — mà trước tiên là "khi nào". Sau khi nhân vật nghe tin gì, trước hay sau khi họ phản ứng? Timing của close-up quyết định ta đồng cảm hay phân tích nhân vật đó.`,
+    examples: [
+      {
+        film: 'The Good, the Bad and the Ugly (1966) — Sergio Leone',
+        detail: 'Cảnh đối đầu cuối phim: Leone dùng extreme close-up vào mắt 3 nhân vật, xen kẽ với wide shot của cả ba. Ta đọc được sự tính toán, nỗi sợ, và quyết tâm — không cần một dòng thoại nào. Đây là close-up như ngôn ngữ thuần túy.',
+      },
+      {
+        film: 'Dancer in the Dark (2000) — Lars von Trier',
+        detail: 'Von Trier quay bằng 100 camera cùng lúc, trong đó nhiều camera handheld rất gần mặt Björk. Ta không bao giờ thoát được khuôn mặt bà — và cũng không bao giờ thoát được cảm xúc của nhân vật. Đây là close-up như tra tấn cảm xúc có chủ đích.',
+      },
+      {
+        film: 'Persona (1966) — Ingmar Bergman',
+        detail: 'Bergman đặt 2 khuôn mặt phụ nữ kề nhau đến mức chúng blend thành một. Close-up không còn là để đọc cảm xúc — mà là để đặt câu hỏi về identity. Đây là close-up như philosophy.',
+      },
+    ],
+    exercise: `Trong phim này, tìm một reaction shot — cảnh quay mặt nhân vật khi họ nghe/thấy điều gì đó. Tắt âm thanh. Chỉ nhìn mặt: bạn đọc được gì? Bật lại âm thanh: context có thay đổi cách bạn đọc khuôn mặt đó không? Nếu có — đạo diễn đang dùng âm thanh để "viết lại" visual.`,
+    deeper: `Một số đạo diễn như Robert Bresson cố tình dùng "model" (diễn viên không được phép "diễn") và close-up vào mặt blank. Kết quả: khán giả project cảm xúc của chính mình vào mặt trống đó. Close-up blank mặt = mirror cho khán giả.`,
+    connects_to: ['Mise-en-Scène', 'Subtext Dialogue', 'The Look'],
+  },
+
+  'Continuity Editing': {
+    icon: '✂️',
+    level: 'cơ bản',
+    oneliner: 'Nghệ thuật cắt cảnh sao cho khán giả không nhận ra đang xem nhiều cảnh riêng biệt — seamless illusion của thực tại.',
+    why: `Đây là "ngữ pháp" của điện ảnh mainstream — hầu hết khán giả học ngữ pháp này mà không biết. Khi continuity editing hoạt động tốt, ta hoàn toàn "quên" đang xem phim và đắm chìm vào câu chuyện.
+    
+    Khi nó bị phá vỡ — vô tình hay cố ý — ta bị "kick out" khỏi câu chuyện và nhận ra mình đang xem phim. Đây có thể là lỗi, hoặc là quyết định nghệ thuật của đạo diễn muốn giữ khoảng cách với khán giả.`,
+    how: `Ba quy tắc cốt lõi: (1) <em>180° rule</em> — camera không được vượt qua đường tưởng tượng nối hai nhân vật, nếu không họ sẽ đột nhiên "đổi chỗ" trên màn hình. (2) <em>Eyeline match</em> — nếu A nhìn sang phải, cảnh tiếp theo B phải nhìn sang trái. (3) <em>Match on action</em> — cắt giữa chừng của action, không phải trước hay sau.`,
+    spot: `Khi bạn đột nhiên bị "confused" về không gian — ai đứng đâu, ai nhìn ai — đó thường là continuity error hoặc cố ý phá 180° rule. Trong phim bạn đang xem: có moment nào bạn cảm thấy "hả? nhân vật này vừa ở đâu?" — đó là nơi đáng để pause và rewind.`,
+    examples: [
+      {
+        film: 'Breathless / À bout de souffle (1960) — Jean-Luc Godard',
+        detail: 'Godard cố ý phá continuity editing bằng jump cuts liên tục — cách chứng minh rằng "rules" của Hollywood là tùy ý, không phải tự nhiên. Đây là phim đầu tiên khiến khán giả nhận ra họ đang xem phim.',
+      },
+      {
+        film: 'Mad Max: Fury Road (2015) — George Miller',
+        detail: 'Ngược lại: Miller và editor Margaret Sixel xây dựng continuity editing cho action sequences phức tạp nhất lịch sử điện ảnh. Ta luôn biết đang ở đâu trong không gian địa lý dù mọi thứ đang nổ tung. Đây là continuity editing như kiệt tác.',
+      },
+    ],
+    exercise: `Trong một cảnh conversation hai người: vẽ sơ đồ đơn giản — ai ngồi đâu, camera ở đâu. Mỗi khi có cut, đánh dấu góc camera mới. Xem phim có tuân thủ 180° rule không. Nếu phá rule: ở cảnh nào, và có tạo ra cảm giác gì không?`,
+    deeper: `Tại sao continuity editing xuất hiện ở Hollywood thập niên 1910-20? Vì studio cần phim dễ hiểu cho khán giả toàn cầu — ngôn ngữ visual cần "universal grammar". Câu hỏi: phim từ nền văn hóa khác (Nhật, Ấn Độ, Iran) có dùng cùng grammar không?`,
+    connects_to: ['Jump Cut', 'Long Take', 'Cross-Cutting'],
+  },
+
+  'Jump Cut': {
+    icon: '⚡',
+    level: 'cơ bản',
+    oneliner: 'Cắt đột ngột làm vỡ liên tục — thời gian nhảy cóc, không gian giật cục — khán giả bị đẩy ra khỏi "giấc ngủ" của narrative.',
+    why: `Jump cut phá vỡ "khế ước" ngầm giữa đạo diễn và khán giả: "tôi sẽ dẫn bạn qua câu chuyện một cách liền mạch." Khi phá vỡ khế ước đó, đạo diễn đang làm điều gì đó — không phải vô ý.
+    
+    Mục đích phổ biến: (1) nén thời gian mà không cần fade to black, (2) biểu hiện sự phân mảnh tâm lý của nhân vật, (3) nhắc nhở khán giả rằng đây là phim — bạn đang xem, không phải trải nghiệm.`,
+    how: `Jump cut tạo ra "cognitive hiccup" — não khán giả cố gắng điền vào khoảng trống bị bỏ qua. Thường thì không điền được, và cảm giác bứt rứt nhẹ đó là phần của trải nghiệm mà đạo diễn muốn tạo ra.
+    
+    Phân biệt với continuity error: jump cut có chủ đích thường xảy ra nhiều lần trong cùng một cảnh, tạo ra rhythm riêng.`,
+    spot: `Khi thấy nhân vật đột nhiên "nhảy" sang vị trí khác trong cùng một cảnh mà không có cut đi đâu rõ ràng — đó là jump cut. Hỏi: thời gian trôi qua bao lâu? Đạo diễn đang nén gì vào khoảng trống đó?`,
+    examples: [
+      {
+        film: 'Breathless (1960) — Jean-Luc Godard',
+        detail: 'Godard cắt nhiều phần từ cảnh xe hơi — nhân vật nhảy vị trí liên tục. Lý do kỹ thuật: rút ngắn cảnh. Lý do nghệ thuật: tạo cảm giác "thực tại không liên tục" — phản ánh nhân vật sống không có kế hoạch.',
+      },
+      {
+        film: 'Requiem for a Dream (2000) — Darren Aronofsky',
+        detail: 'Aronofsky dùng "hip hop montage" — chuỗi jump cut cực nhanh để biểu hiện addiction. Não khán giả bị overwhelmed giống như não người nghiện. Jump cut như neurological experience.',
+      },
+    ],
+    exercise: `Lần xem tiếp theo: mỗi khi thấy cut, hỏi "đây là continuity cut hay jump cut?" Continuity cut: ta vẫn biết đang ở đâu trong không gian. Jump cut: ta bị disorient nhẹ. Đếm xem phim này có bao nhiêu jump cut, và chúng xuất hiện ở đâu trong arc của phim.`,
+    deeper: `YouTube vlog và TikTok bình thường hóa jump cut đến mức khán giả trẻ không còn "cảm" sự phá vỡ nữa. Điều này có ý nghĩa gì với đạo diễn muốn dùng jump cut như công cụ disorientation?`,
+    connects_to: ['Continuity Editing', 'Non-Linear Narrative', 'Diegetic Sound'],
+  },
+
+  'Negative Space': {
+    icon: '⬛',
+    level: 'trung cấp',
+    oneliner: 'Phần trống trong frame không phải "chưa điền vào" — nó chủ động nói điều mà vật thể không thể nói.',
+    why: `Trong hội họa, negative space (khoảng trống) định nghĩa positive space (vật thể) — ta chỉ nhận ra hình dạng của một vật khi thấy rõ đường biên giữa nó và cái không-phải-nó.
+    
+    Trong điện ảnh: khi nhân vật nhỏ bé trong frame rộng lớn → ta cảm nhận được sự cô đơn, áp lực, hoặc sức mạnh của môi trường xung quanh. Đây là thông tin không thể nói bằng lời.`,
+    how: `Mắt người có xu hướng tìm đến vùng sáng nhất và đối tượng có contrast cao nhất trong frame. Khi đạo diễn đặt nhân vật nhỏ trong vùng tối, mắt ta vẫn tìm thấy họ — nhưng phải "làm việc" để tìm. Công sức tìm kiếm đó tạo ra cảm giác khó khăn, đấu tranh.`,
+    spot: `Hỏi với mỗi cảnh: nhân vật chiếm bao nhiêu % diện tích frame? 80%? 10%? 40%? Con số đó không ngẫu nhiên. Khi nhân vật thu nhỏ trong frame → họ đang bị áp đảo bởi gì đó. Khi lấp đầy frame → họ đang kiểm soát.`,
+    examples: [
+      {
+        film: 'Parasite (2019) — Bong Joon-ho',
+        detail: 'Căn hộ nhà nghèo: nhân vật lấp kín frame — không còn chỗ để thở. Biệt thự nhà giàu: nhân vật nhỏ bé trong không gian mênh mông. Negative space là ngôn ngữ giai cấp — giàu = có không gian, nghèo = không gian nào cho riêng mình.',
+      },
+      {
+        film: '2001: A Space Odyssey (1968) — Stanley Kubrick',
+        detail: 'Con người cực kỳ nhỏ trong vũ trụ rộng lớn. Negative space = vũ trụ vô tận > con người. Đây là thông điệp của phim được kể bằng composition, không phải dialogue.',
+      },
+      {
+        film: 'Her (2013) — Spike Jonze',
+        detail: 'Theodore thường được quay trong frame rộng, xung quanh toàn người lạ — cô đơn giữa đám đông. Negative space đầy người nhưng vẫn là negative space về mặt cảm xúc.',
+      },
+    ],
+    exercise: `Lấy 5 screenshot từ phim (pause và chụp màn hình). Với mỗi cái, ước lượng: nhân vật chiếm % bao nhiêu frame? Vẽ đường thẳng dọc và ngang qua giữa frame — nhân vật ở phần nào? (Quy tắc 1/3: nhân vật ở đường 1/3 = stable. Ngoài rìa = unstable.)`,
+    deeper: `Một số đạo diễn châu Á (Ozu, Hou Hsiao-hsien, Apichatpong Weerasethakul) để nhân vật đi ra khỏi frame rồi giữ nguyên cảnh trống nhiều giây. Tại sao? Frame trống sau khi nhân vật đi = presence của sự vắng mặt.`,
+    connects_to: ['Mise-en-Scène', 'Dutch Angle', 'Long Take'],
+  },
+
+  'Unreliable Narrator': {
+    icon: '🎭',
+    level: 'nâng cao',
+    oneliner: 'Người kể chuyện không đáng tin — và phim tốt dùng điều này để buộc khán giả làm việc, không phải để "twist" đơn thuần.',
+    why: `Mọi narrative đều có narrator — ngay cả phim "khách quan" cũng chọn góc máy, chọn cái gì để show hay không show. Unreliable narrator chỉ đơn giản là <em>thành thật về sự không đáng tin</em> của mọi narrative.
+    
+    Khi ta không thể tin hoàn toàn vào narrator → ta phải chủ động đọc phim, so sánh những gì được nói với những gì được thấy, tìm mâu thuẫn. Đây là active viewing thay vì passive consuming.`,
+    how: `Có nhiều loại unreliable narrator: <em>liar</em> (biết sự thật nhưng giấu), <em>self-deceived</em> (không biết mình đang sai), <em>limited</em> (chỉ biết một phần), <em>mad</em> (perception bị distorted). Mỗi loại tạo ra relationship khác nhau với khán giả.
+    
+    Dấu hiệu nhận biết: (1) visual mâu thuẫn với lời narrator, (2) phản ứng của nhân vật phụ không khớp với narrative chính, (3) chi tiết nhỏ ở nền frame không khớp với "official story".`,
+    spot: `Chú ý: <em>ai</em> đang kể câu chuyện này? Nếu là nhân vật trong phim — họ có lý do gì để kể không trung thực không? Họ có gì để mất hoặc được? Chú ý các lần visual "leak" ra ngoài những gì narrator nói.`,
+    examples: [
+      {
+        film: 'Gone Girl (2014) — David Fincher',
+        detail: 'Amy kể câu chuyện qua diary — ta tin hoàn toàn. Đến giữa phim ta nhận ra diary là fabricated. Fincher cho ta biết trước rằng Amy là liar — nhưng ta vẫn bị lừa vì muốn tin vào narrative gọn ghẽ.',
+      },
+      {
+        film: 'Atonement (2007) — Joe Wright',
+        detail: 'Toàn bộ phim là câu chuyện do Briony viết — một nhà văn đang "chuộc tội" bằng cách viết ending khác với sự thật. Ta không biết điều này cho đến cuối. Unreliable narrator như act of atonement.',
+      },
+      {
+        film: 'The Remains of the Day (1993) — James Ivory',
+        detail: 'Stevens kể về cuộc đời mình như một người hoàn toàn dedicate cho nghề — nhưng mọi visual đều cho thấy ông đã hi sinh tình yêu, kết nối con người, và niềm vui. Unreliable narrator không phải vì nói dối, mà vì self-deception.',
+      },
+    ],
+    exercise: `Mỗi khi narrator (bằng lời hoặc qua POV) nói điều gì — hỏi: visual có confirm điều đó không? Tạo hai cột: "Điều narrator nói" và "Điều visual cho thấy". Chỗ nào hai cột không khớp → đó là nơi sự thật đang rò rỉ ra.`,
+    deeper: `Nếu ta không thể tin narrator, ta có thể tin visual không? Không hẳn — đạo diễn chọn góc camera, ánh sáng. Camera cũng có thể "nói dối". Câu hỏi triết học: trong phim, có "sự thật" tuyệt đối không?`,
+    connects_to: ['Non-Linear Narrative', 'Subtext Dialogue', 'MacGuffin'],
+  },
+
+  'Low-Key Lighting': {
+    icon: '🕯️',
+    level: 'cơ bản',
+    oneliner: 'Bóng tối không phải "thiếu ánh sáng" — nó là nhân vật thứ hai, che giấu và tiết lộ theo ý muốn của đạo diễn.',
+    why: `Ánh sáng trong đời thực đến từ nhiều hướng, làm mềm bóng tối. Low-key lighting tạo ra ánh sáng một chiều, cứng — thế giới của nó không phải thế giới tự nhiên, mà là thế giới của moral extremes: thiện-ác, thật-giả, bị ẩn-được tiết lộ.
+    
+    Tại sao Film Noir dùng low-key? Vì thế giới của nó là thế giới mà ai cũng có bí mật, ai cũng có mặt tối — và low-key lighting là cách visual hóa điều đó.`,
+    how: `Kỹ thuật cốt lõi: <em>chiaroscuro</em> — tương phản ánh sáng/bóng tối cực đại. Vùng tối không phải void — chúng contain thông tin mà khán giả phải đoán. Não người fill in the blanks, thường theo hướng tiêu cực nhất có thể → anxiety.
+    
+    "Venetian blind shadows" (bóng của rèm lật sọc) xuất hiện nhiều trong noir: nhân vật bị "giam cầm" bởi bóng tối dù đang ở nơi tự do về vật lý.`,
+    spot: `Nhìn vào khuôn mặt nhân vật: bao nhiêu % được chiếu sáng, bao nhiêu trong bóng tối? Nếu một bên mặt sáng, một bên tối → nhân vật đang ở ranh giới thiện/ác, thật/giả. Đây là kỹ thuật rất cụ thể mà bạn có thể nhận ra ngay.`,
+    examples: [
+      {
+        film: 'The Godfather (1972) — Gordon Willis (Director of Photography)',
+        detail: 'Willis được gọi là "Prince of Darkness" — ông chiếu sáng Corleone sao cho mắt luôn trong bóng tối. Lý do: Don Corleone là người không ai có thể đọc được — ngay cả visual cũng từ chối tiết lộ ông ta đang nghĩ gì.',
+      },
+      {
+        film: 'Se7en (1995) — David Fincher & Darius Khondji',
+        detail: 'Thành phố mưa liên tục, ánh sáng từ đèn vàng ố. Low-key không phải tạo bóng tối literal — mà tạo atmosphere của nơi God đã rời đi. Lighting là world-building.',
+      },
+      {
+        film: 'Carol (2015) — Todd Haynes & Edward Lachman',
+        detail: 'Ánh sáng qua kính xe hơi mờ, qua rèm cửa — ánh sáng luôn bị filter, không bao giờ trực tiếp. Lý do: tình yêu của hai phụ nữ trong thập niên 50 luôn phải bị nhìn qua "kính mờ" của xã hội.',
+      },
+    ],
+    exercise: `Dùng tay che một nửa màn hình trong một cảnh bất kỳ. Rồi che nửa kia. Thông tin nào bị mất khi che phần tối? Thường người ta nghĩ phần tối "không có gì" — nhưng thật ra nó đang giữ thứ gì đó.`,
+    deeper: `High-key lighting (ánh sáng đều, ít bóng tối) được dùng trong comedy và romcom vì lý do gì? Và khi một scene trong phim high-key đột nhiên có low-key moment → đó là dấu hiệu gì?`,
+    connects_to: ['Mise-en-Scène', 'Film Noir Lighting', 'Negative Space'],
+  },
+
+  'Character Arc': {
+    icon: '📈',
+    level: 'trung cấp',
+    oneliner: 'Nhân vật đầu phim và nhân vật cuối phim là cùng một người nhưng đã thay đổi — và cách họ thay đổi là thông điệp của phim.',
+    why: `Tại sao ta xem phim? Một phần vì muốn thấy con người thay đổi — thứ khó xảy ra trong cuộc sống thật. Phim cho ta trải nghiệm transformation mà không phải trả giá.
+    
+    Character arc không phải "nhân vật tốt hơn" — đó chỉ là một loại arc. Có arc tiêu cực (tha hóa), arc flat (không đổi nhưng thế giới xung quanh thay đổi), arc vòng tròn (tưởng thay đổi nhưng quay về điểm cũ). Mỗi loại nói điều khác nhau về bản chất con người.`,
+    how: `Arc được kể qua: (1) <em>want vs need</em> — nhân vật muốn X nhưng cần Y; câu chuyện thường kết thúc khi họ nhận ra sự khác biệt này. (2) <em>wound</em> — trauma quá khứ định hình behavior hiện tại. (3) <em>ghost</em> — bóng ma quá khứ xuất hiện trong hiện tại. (4) <em>transformation event</em> — khoảnh khắc nhân vật không thể quay lại như cũ.`,
+    spot: `Hỏi ở 3 điểm: đầu phim (want là gì? fear là gì?), giữa phim (want có thay đổi không?), cuối phim (want ban đầu có còn quan trọng không?). Sự thay đổi giữa 3 điểm đó = arc. Không thay đổi = flat arc hoặc phim có vấn đề.`,
+    examples: [
+      {
+        film: 'Whiplash (2014) — Damien Chazelle',
+        detail: 'Andrew bắt đầu muốn "trở thành nhạc công vĩ đại". Cuối phim ông ta đạt được — nhưng đã mất đi sự nhân tính. Arc tiêu cực được đóng gói như positive achievement. Phim đặt câu hỏi: greatness worth the price?',
+      },
+      {
+        film: 'Toy Story (1995) — John Lasseter',
+        detail: 'Woody muốn là đồ chơi được yêu thích nhất. Buzz đến và "chiếm" vị trí đó. Arc của Woody: từ insecurity và jealousy → acceptance rằng tình yêu không phải zero-sum game. Simple arc nhưng universal.',
+      },
+      {
+        film: 'No Country for Old Men (2007) — Coen Brothers',
+        detail: 'Sheriff Bell không có arc truyền thống — ông ta không thay đổi, không defeat villain, chỉ retire. Flat arc như lời tuyên bố: thế giới này không cho phép hero arc tồn tại. Đây là anti-arc có chủ đích.',
+      },
+    ],
+    exercise: `Viết 1 câu mô tả nhân vật chính ở đầu phim: "[Tên] là người [X] vì [Y]." Sau khi xem xong, viết lại câu đó cho nhân vật cuối phim. So sánh 2 câu — đó là arc. Nếu 2 câu giống nhau → flat arc hoặc phim thất bại trong character development.`,
+    deeper: `Phim có thể kể câu chuyện không có character arc — chỉ có plot arc (sự kiện thay đổi nhưng con người không thay đổi). Loại phim đó nói gì về quan điểm của đạo diễn đối với bản chất con người?`,
+    connects_to: ['Subtext Dialogue', 'Non-Linear Narrative', 'MacGuffin'],
+  },
+
+  'Leitmotif': {
+    icon: '🎵',
+    level: 'cơ bản',
+    oneliner: 'Nhạc/âm thanh/hình ảnh lặp lại gắn với nhân vật hoặc idea — não học cách liên kết, rồi đạo diễn dùng liên kết đó để tạo cảm xúc không cần giải thích.',
+    why: `Leitmotif là Pavlov's bell của điện ảnh. Sau khi ta được "train" để liên kết một âm thanh/hình ảnh với một cảm xúc cụ thể, đạo diễn chỉ cần nhắc lại leitmotif đó — cảm xúc xuất hiện tự động, không cần setup.
+    
+    Đây là công cụ hiệu quả nhất để cài thông điệp vào bộ nhớ cảm xúc của khán giả — và cũng là công cụ bị lạm dụng nhiều nhất bởi phim mainstream.`,
+    how: `Cơ chế: lần 1 — leitmotif xuất hiện cùng với context rõ ràng (ta biết nó có nghĩa gì). Lần 2 — leitmotif xuất hiện mà không có context — ta nhớ lại cảm xúc lần 1. Lần 3 — leitmotif biến tấu (nhanh hơn, chậm hơn, instrument khác) → ta cảm nhận được sự thay đổi trong chủ đề/nhân vật mà không cần giải thích.`,
+    spot: `Nghe 10 phút đầu phim chỉ bằng tai, mắt nhắm. Có âm thanh nào lặp lại không? Có theme nhạc nào xuất hiện khi nhân vật chính vào cảnh không? Ghi nhớ. Sau đó chú ý xem nó biến tấu như thế nào qua phim.`,
+    examples: [
+      {
+        film: 'Jaws (1975) — John Williams',
+        detail: 'Hai nốt đơn giản: duh-duh... duh-duh... Williams nói ông lấy cảm hứng từ nhịp tim tăng dần. Sau khi ta liên kết 2 nốt này với cá mập, Williams chơi chúng ngay cả khi chưa có gì — ta sợ không phải vì thấy cá mập, mà vì nghe nhạc.',
+      },
+      {
+        film: 'Schindler\'s List (1993) — John Williams',
+        detail: 'Theme đàn violin solo cho "cô bé áo đỏ" — màu duy nhất trong phim đen trắng. Leitmotif là visual (màu đỏ) thay vì âm nhạc. Mỗi lần thấy đỏ = reminder of innocence about to be destroyed.',
+      },
+      {
+        film: 'There Will Be Blood (2007) — Jonny Greenwood',
+        detail: 'Greenwood dùng string dissonance bất cứ khi nào Daniel Plainview sắp làm điều gì đó destructive. Ta dần học được: âm thanh đó = danger. Đến cuối phim chỉ cần nghe vài nốt đầu là ta biết có gì sắp sai.',
+      },
+    ],
+    exercise: `Tắt hình, chỉ nghe soundtrack của phim trong 20 phút đầu. Đánh dấu: (a) âm thanh nào lặp lại, (b) bạn cảm thấy gì khi nghe. Sau đó xem lại với hình — xem leitmotif xuất hiện ở cảnh nào. Đạo diễn dùng nó đúng lúc không?`,
+    deeper: `Phim silent era (trước 1927) dùng live music chơi tại rạp — mỗi rạp chơi nhạc khác nhau. Khi sound film ra đời, leitmotif trở thành công cụ kiểm soát: đạo diễn quyết định khán giả ở mọi rạp phải cảm gì. Đây có phải là manipulation không?`,
+    connects_to: ['Diegetic Sound', 'Character Arc', 'Mise-en-Scène'],
+  },
+
+  'Cross-Cutting': {
+    icon: '🔄',
+    level: 'trung cấp',
+    oneliner: 'Cắt qua lại giữa hai cảnh cùng thời điểm — đặt hai sự thật cạnh nhau để tạo ra sự thật thứ ba mà không ai nói ra.',
+    why: `Cross-cutting là công cụ irony và contrast mạnh nhất của điện ảnh. Khi ta đặt cảnh A cạnh cảnh B, não khán giả tự động tạo ra mối liên hệ A-B — dù không có gì trong A hay B nói về mối liên hệ đó.
+    
+    Đây là "Kuleshov Effect" ứng dụng vào cấu trúc: ý nghĩa không nằm trong từng cảnh riêng lẻ — nó nằm trong khoảng trống giữa các cảnh.`,
+    how: `Hai cách dùng chính: (1) <em>parallel action</em> — hai sự kiện xảy ra đồng thời, sắp hội tụ (chase scene). Tạo tension vì ta biết chúng sẽ gặp nhau. (2) <em>thematic contrast</em> — hai cảnh không liên quan về plot nhưng comment lên nhau về ý nghĩa. Cách 2 phức tạp hơn và đòi hỏi khán giả phải đọc.`,
+    spot: `Khi phim cắt từ cảnh A sang cảnh B mà không có sự di chuyển của nhân vật — hỏi: A và B xảy ra cùng lúc hay khác thời điểm? Nếu cùng lúc → cross-cutting parallel action. Nếu không rõ → có thể là thematic contrast. Tìm điểm chung hoặc đối lập giữa A và B.`,
+    examples: [
+      {
+        film: 'The Godfather (1972) — Francis Ford Coppola',
+        detail: 'Lễ rửa tội của con trai Michael được cắt xen kẽ với các vụ ám sát mà Michael ra lệnh. Đây là cross-cutting thematic: lời thề từ bỏ Satan tại nhà thờ xen kẽ với hành động của Satan trong thực tế. Ý nghĩa thứ ba: Michael đang trở thành điều ông ta tuyên bố từ bỏ.',
+      },
+      {
+        film: 'Interstellar (2014) — Christopher Nolan',
+        detail: 'Cooper xem video của con gái trưởng thành trong khi ông gần như không già — cross-cutting giữa hai dòng thời gian. Tạo ra pathos mà không có cảnh nào đủ mạnh khi đứng một mình.',
+      },
+    ],
+    exercise: `Trong phim này, tìm một lần cross-cutting. Viết ra: (1) Cảnh A là gì? (2) Cảnh B là gì? (3) Điểm giống nhau giữa A và B? (4) Điểm đối lập? (5) Nếu chỉ xem A mà không có B thì ý nghĩa có giống không? Câu trả lời cho (5) là lý do cross-cutting tồn tại.`,
+    deeper: `D.W. Griffith được credit là "phát minh" cross-cutting ở thập niên 1910 — nhưng ông dùng nó trong Birth of a Nation (1915), một phim phân biệt chủng tộc. Kỹ thuật điện ảnh có thể "trung lập" về mặt đạo đức không?`,
+    connects_to: ['Continuity Editing', 'Parallel Editing', 'Leitmotif'],
+  },
+
+};
+
+const DC_INFLUENCE_TREES = {
+  // Đạo diễn → { học từ ai, ảnh hưởng ai }
+  'Christopher Nolan': {
+    influenced_by: ['Stanley Kubrick', 'Ridley Scott', 'Michael Mann', 'Andrei Tarkovsky'],
+    influenced: ['Denis Villeneuve', 'Gareth Edwards', 'J.J. Abrams', 'Cary Joji Fukunaga'],
+    signature: ['Non-linear narrative', 'Practical effects preference', 'IMAX photography', 'Ambiguous endings', 'Time manipulation'],
+    philosophy: 'Tin rằng khán giả thông minh hơn Hollywood nghĩ. Luôn ưu tiên practical over CGI.',
+  },
+  'Quentin Tarantino': {
+    influenced_by: ['Jean-Luc Godard', 'Brian De Palma', 'Sergio Leone', 'Akira Kurosawa'],
+    influenced: ['Guy Ritchie', 'Edgar Wright', 'Robert Rodriguez', 'Park Chan-wook'],
+    signature: ['Non-linear narrative', 'Dialogue as music', 'Pop culture references', 'Long take', 'Violence as ballet'],
+    philosophy: 'Phim là sự tổng hợp của tình yêu với phim — stealing from the best to create something new.',
+  },
+  'Steven Spielberg': {
+    influenced_by: ['David Lean', 'John Ford', 'Alfred Hitchcock', 'Akira Kurosawa'],
+    influenced: ['J.J. Abrams', 'Colin Trevorrow', 'James Cameron', 'Ron Howard'],
+    signature: ['Child perspective', 'Practical effects', 'Golden hour photography', 'Emotional manipulation through music'],
+    philosophy: 'Story comes first. Technology serves emotion, never the reverse.',
+  },
+  'Martin Scorsese': {
+    influenced_by: ['Federico Fellini', 'Roberto Rossellini', 'Michael Powell', 'Roger Corman'],
+    influenced: ['Paul Thomas Anderson', 'Spike Lee', 'David O. Russell', 'Todd Phillips'],
+    signature: ['Long take', 'Freeze frame', 'Rock music soundtrack', 'Voice-over', 'Male psychology'],
+    philosophy: 'Cinema is a mirror of the human condition — particularly masculine guilt and redemption.',
+  },
+  'Stanley Kubrick': {
+    influenced_by: ['Max Ophüls', 'Orson Welles', 'Charlie Chaplin'],
+    influenced: ['Christopher Nolan', 'David Fincher', 'Paul Thomas Anderson', 'Alex Garland'],
+    signature: ['One-point perspective', 'Low-angle shots', 'Symmetrical composition', 'Practical lighting only', 'Obsessive perfectionism'],
+    philosophy: 'Perfect is achievable with enough takes. Every frame is a painting.',
+  },
+  'Wong Kar-wai': {
+    influenced_by: ['Jean-Luc Godard', 'Michelangelo Antonioni'],
+    influenced: ['Sofia Coppola', 'Xavier Dolan', 'Barry Jenkins', 'Luca Guadagnino'],
+    signature: ['Slow motion', 'Step-printing', 'Available light', 'Improvised scripts', 'Unrequited love'],
+    philosophy: 'Memory, longing, và time — phim không kể chuyện, phim tạo ra cảm giác.',
+  },
+  'Bong Joon-ho': {
+    influenced_by: ['Alfred Hitchcock', 'Kim Jee-woon', 'Im Kwon-taek'],
+    influenced: ['Lee Isaac Chung', 'Celine Song'],
+    signature: ['Genre-blending', 'Class commentary', 'Tonal shifts', 'Spatial metaphor', 'Tragicomedy'],
+    philosophy: 'Genre là phương tiện — thông điệp xã hội là đích đến. Khán giả không nên biết đang được dạy.',
+  },
+  'Denis Villeneuve': {
+    influenced_by: ['Stanley Kubrick', 'Andrei Tarkovsky', 'Ridley Scott', 'Christopher Nolan'],
+    influenced: ['Hội đạo diễn sci-fi thế hệ mới'],
+    signature: ['Silence as tension', 'Slow burn', 'Ecological themes', 'Female protagonists', 'Sound design as narrative'],
+    philosophy: 'Sci-fi là thể loại duy nhất cho phép hỏi những câu hỏi lớn nhất về con người.',
+  },
+  'Alfred Hitchcock': {
+    influenced_by: ['Fritz Lang', 'F.W. Murnau', 'G.W. Pabst'],
+    influenced: ['Brian De Palma', 'David Fincher', 'M. Night Shyamalan', 'Quentin Tarantino'],
+    signature: ['MacGuffin', 'Suspense over surprise', 'Voyeurism', 'Wrong man trope', 'Blonde protagonist'],
+    philosophy: 'Logic là kẻ thù của imagination. Plausibility không quan trọng — emotion mới quan trọng.',
+  },
+  'Akira Kurosawa': {
+    influenced_by: ['John Ford', 'William Wyler', 'Sergei Eisenstein'],
+    influenced: ['George Lucas', 'Steven Spielberg', 'Francis Ford Coppola', 'Sergio Leone'],
+    signature: ['Weather as emotion', 'Telephoto lens compression', 'Wipe transitions', 'Multi-camera action', 'Samurai code'],
+    philosophy: 'Phim phải là sự thật. Kể cả trong fantasy, chân lý con người phải hiện diện.',
+  },
+  'Wes Anderson': {
+    influenced_by: ['François Truffaut', 'Jean-Luc Godard', 'Orson Welles', 'Satyajit Ray'],
+    influenced: ['Xavier Dolan', 'Kishi Bashi (music)'],
+    signature: ['Symmetrical composition', 'Pastel palette', 'Deadpan', 'Overhead shots', 'Ensemble cast'],
+    philosophy: 'Style IS substance. Aesthetic control là ngôn ngữ cảm xúc — không phải decoration.',
+  },
+  'David Fincher': {
+    influenced_by: ['Stanley Kubrick', 'Alan Parker', 'Ridley Scott'],
+    influenced: ['Zack Snyder', 'Antoine Fuqua', 'Joe Carnahan'],
+    signature: ['Digital grade (desaturated)', 'Long takes disguised as cuts', 'Obsession themes', 'Matte environments', 'Score by Trent Reznor'],
+    philosophy: 'Movies are not released, they escape. Perfection through infinite takes.',
+  },
+};
+
+// Match đạo diễn từ tên → key trong influence tree
+function findDirectorKey(directorName) {
+  if (!directorName) return null;
+  const name = directorName.trim();
+  // Exact match
+  if (DC_INFLUENCE_TREES[name]) return name;
+  // Partial match
+  return Object.keys(DC_INFLUENCE_TREES).find(k =>
+    k.toLowerCase().includes(name.toLowerCase()) ||
+    name.toLowerCase().includes(k.toLowerCase().split(' ').pop())
+  ) || null;
+}
+
+// Lấy kỹ thuật phù hợp với phim này
+function getTechniquesForMovie(movie, detail) {
+  const genres = (detail?.genres || movie?.genre || '').split(',').map(g => g.trim());
+  const allTechs = new Set();
+
+  genres.forEach(g => {
+    const mapped = Object.keys(DC_TECHNIQUES).find(k => g.toLowerCase().includes(k.toLowerCase()));
+    if (mapped) DC_TECHNIQUES[mapped].forEach(t => allTechs.add(t));
+  });
+
+  // Fallback nếu không match genre nào
+  if (!allTechs.size) {
+    ['Long Take', 'Mise-en-Scène', 'MacGuffin', 'Non-Linear Narrative', 'Subtext Dialogue'].forEach(t => allTechs.add(t));
+  }
+
+  return [...allTechs].filter(t => DC_TECHNIQUE_DETAIL[t]).slice(0, 8);
+}
+
+function renderDirectorsCut(container, movie, detail) {
+  // Section wrapper
+  const sec = el('div', 'dc-section');
+
+  // Header — collapsed by default
+  const hdr = el('div', 'dc-header');
+  hdr.innerHTML = `
+    <div class="dc-header-left">
+      <span class="dc-clapboard">🎬</span>
+      <div>
+        <div class="dc-title">Director's Cut</div>
+        <div class="dc-subtitle">Học làm phim qua bộ phim này</div>
+      </div>
+    </div>
+    <button class="dc-toggle-btn" aria-label="Toggle Director's Cut">
+      <span class="dc-toggle-icon">▶</span>
+      <span class="dc-toggle-label">Khám phá</span>
+    </button>`;
+
+  const body = el('div', 'dc-body dc-body-hidden');
+
+  // Build nội dung
+  const techniques = getTechniquesForMovie(movie, detail);
+  const directorKey = findDirectorKey(detail?.director?.split(',')[0]);
+  const directorData = directorKey ? DC_INFLUENCE_TREES[directorKey] : null;
+
+  // ── TAB NAV ──
+  const tabs = el('div', 'dc-tabs');
+  const tabDefs = [
+    { id: 'techniques', label: '🎥 Kỹ Thuật', show: techniques.length > 0 },
+    { id: 'influence',  label: '🌳 Influence Tree', show: !!directorData },
+    { id: 'analysis',   label: '🔍 Phân Tích Nhanh', show: true },
+  ].filter(t => t.show);
+
+  tabDefs.forEach((t, i) => {
+    const btn = el('button', `dc-tab-btn${i === 0 ? ' dc-tab-active' : ''}`, t.label);
+    btn.dataset.tab = t.id;
+    tabs.appendChild(btn);
+  });
+  body.appendChild(tabs);
+
+  // ── PANELS ──
+  const panels = el('div', 'dc-panels');
+
+  // PANEL 1: Techniques
+  if (techniques.length) {
+    const p1 = el('div', 'dc-panel dc-panel-active');
+    p1.dataset.panel = 'techniques';
+
+    const intro = el('p', 'dc-panel-intro',
+      `${techniques.length} kỹ thuật điện ảnh được sử dụng trong thể loại của phim này:`);
+    p1.appendChild(intro);
+
+    const techGrid = el('div', 'dc-tech-grid');
+
+    techniques.forEach((techName, i) => {
+    const tech = DC_TECHNIQUE_DETAIL[techName];
+    if (!tech) return;
+
+    const card = el('div', 'dc-tech-card');
+    card.style.animationDelay = `${i * 60}ms`;
+
+    // ── HEADER (luôn hiện) ──
+    const levelColor = { 'cơ bản': '#44cc88', 'trung cấp': '#f5c518', 'nâng cao': '#ff8844' };
+    const hdr = el('div', 'dc-tech-card-hdr');
+    hdr.innerHTML = `
+      <span class="dc-tech-icon">${tech.icon}</span>
+      <div class="dc-tech-hdr-text">
+        <span class="dc-tech-name">${techName}</span>
+        <span class="dc-tech-oneliner">${tech.oneliner}</span>
+      </div>
+      <span class="dc-tech-level" style="color:${levelColor[tech.level] || '#888'}">${tech.level}</span>
+      <span class="dc-tech-expand">+</span>`;
+    card.appendChild(hdr);
+
+    // ── BODY (ẩn, mở khi click) ──
+    const body = el('div', 'dc-tech-card-body dc-tech-body-hidden');
+
+    // Tab bar bên trong card
+    const innerTabs = ['Tại sao', 'Cơ chế', 'Nhận biết', 'Ví dụ', 'Bài tập'];
+    const tabBar = el('div', 'dc-inner-tabs');
+    innerTabs.forEach((t, ti) => {
+      const b = el('button', `dc-inner-tab${ti === 0 ? ' dc-inner-tab-active' : ''}`, t);
+      b.dataset.itab = ti;
+      tabBar.appendChild(b);
+    });
+    body.appendChild(tabBar);
+
+    // Nội dung từng tab
+    const tabContents = [
+      // 0 — Tại sao
+      `<div class="dc-tab-content">
+        <div class="dc-tab-section">${tech.why}</div>
+      </div>`,
+
+      // 1 — Cơ chế
+      `<div class="dc-tab-content">
+        <div class="dc-tab-section">${tech.how}</div>
+      </div>`,
+
+      // 2 — Nhận biết
+      `<div class="dc-tab-content">
+        <div class="dc-spot-box">
+          <div class="dc-spot-label">🔍 Trong phim bạn đang xem</div>
+          <div class="dc-spot-text">${tech.spot}</div>
+        </div>
+      </div>`,
+
+      // 3 — Ví dụ (có từng film riêng)
+      `<div class="dc-tab-content">
+        ${(tech.examples || []).map(ex => `
+          <div class="dc-example-block">
+            <div class="dc-example-film">${ex.film}</div>
+            <div class="dc-example-detail">${ex.detail}</div>
+          </div>`).join('')}
+      </div>`,
+
+      // 4 — Bài tập
+      `<div class="dc-tab-content">
+        <div class="dc-exercise-box">
+          <div class="dc-exercise-label">✏️ Bài tập xem phim</div>
+          <div class="dc-exercise-text">${tech.exercise}</div>
+        </div>
+        ${tech.deeper ? `
+        <div class="dc-deeper-box">
+          <div class="dc-deeper-label">🔭 Câu hỏi mở rộng</div>
+          <div class="dc-deeper-text">${tech.deeper}</div>
+        </div>` : ''}
+        ${(tech.connects_to?.length) ? `
+        <div class="dc-connects">
+          <span class="dc-connects-label">Liên quan:</span>
+          ${tech.connects_to.map(c => `<span class="dc-connect-tag">${c}</span>`).join('')}
+        </div>` : ''}
+      </div>`,
+    ];
+
+    const contentWrap = el('div', 'dc-inner-content');
+    contentWrap.innerHTML = tabContents[0];
+    body.appendChild(contentWrap);
+
+    // Wire inner tabs
+    tabBar.querySelectorAll('.dc-inner-tab').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.itab);
+        tabBar.querySelectorAll('.dc-inner-tab').forEach(b => b.classList.remove('dc-inner-tab-active'));
+        btn.classList.add('dc-inner-tab-active');
+        contentWrap.innerHTML = tabContents[idx];
+      });
+    });
+
+    card.appendChild(body);
+
+    // Toggle mở/đóng card
+    hdr.addEventListener('click', () => {
+      const isOpen = !body.classList.contains('dc-tech-body-hidden');
+      techGrid.querySelectorAll('.dc-tech-card-body').forEach(b => b.classList.add('dc-tech-body-hidden'));
+      techGrid.querySelectorAll('.dc-tech-expand').forEach(e => e.textContent = '+');
+      if (!isOpen) {
+        body.classList.remove('dc-tech-body-hidden');
+        hdr.querySelector('.dc-tech-expand').textContent = '−';
+      }
+    });
+
+    techGrid.appendChild(card);
+  });
+    p1.appendChild(techGrid);
+
+    // "Xem phim theo góc độ kỹ thuật" prompt
+    const watchNote = el('div', 'dc-watch-note');
+    watchNote.innerHTML = `<span>🎯</span> <em>Lần xem tiếp theo: thử chú ý một kỹ thuật mỗi lần, thay vì cả 8 cùng lúc</em>`;
+    p1.appendChild(watchNote);
+
+    panels.appendChild(p1);
+  }
+
+  // PANEL 2: Influence Tree
+  if (directorData) {
+    const p2 = el('div', 'dc-panel');
+    p2.dataset.panel = 'influence';
+
+    const dirName = detail.director.split(',')[0].trim();
+
+    // Director bio strip
+    const bioStrip = el('div', 'dc-dir-strip');
+    bioStrip.innerHTML = `
+      <div class="dc-dir-name">${dirName}</div>
+      <div class="dc-dir-philosophy">"${directorData.philosophy}"</div>`;
+    p2.appendChild(bioStrip);
+
+    // Signature
+    const sigSec = el('div', 'dc-sig-section');
+    sigSec.innerHTML = `<div class="dc-sig-label">✍️ Chữ ký đạo diễn</div>`;
+    const sigTags = el('div', 'dc-sig-tags');
+    directorData.signature.forEach(s => {
+      const tag = el('span', 'dc-sig-tag', s);
+      sigTags.appendChild(tag);
+    });
+    sigSec.appendChild(sigTags);
+    p2.appendChild(sigSec);
+
+    // Influence tree visual
+    const treeWrap = el('div', 'dc-tree-wrap');
+
+    // "Học từ" row
+    const learnedFrom = el('div', 'dc-tree-row');
+    learnedFrom.innerHTML = `<div class="dc-tree-row-label">📚 Học từ</div>`;
+    const learnedNodes = el('div', 'dc-tree-nodes');
+    directorData.influenced_by.forEach(name => {
+      const node = el('div', 'dc-tree-node dc-node-source');
+      node.textContent = name;
+      node.addEventListener('click', () => {
+        // Tìm phim của đạo diễn này
+        const q = encodeURIComponent(name);
+        window.open(`https://www.themoviedb.org/search?query=${q}`, '_blank');
+      });
+      learnedNodes.appendChild(node);
+    });
+    learnedFrom.appendChild(learnedNodes);
+    treeWrap.appendChild(learnedFrom);
+
+    // Center: director
+    const centerRow = el('div', 'dc-tree-center');
+    centerRow.innerHTML = `
+      <div class="dc-tree-arrow">↓</div>
+      <div class="dc-tree-center-node">${dirName}</div>
+      <div class="dc-tree-arrow">↓</div>`;
+    treeWrap.appendChild(centerRow);
+
+    // "Ảnh hưởng đến" row
+    const influenced = el('div', 'dc-tree-row');
+    influenced.innerHTML = `<div class="dc-tree-row-label">🌱 Ảnh hưởng đến</div>`;
+    const influencedNodes = el('div', 'dc-tree-nodes');
+    directorData.influenced.forEach(name => {
+      const node = el('div', 'dc-tree-node dc-node-target');
+      node.textContent = name;
+      node.addEventListener('click', () => {
+        window.open(`https://www.themoviedb.org/search?query=${encodeURIComponent(name)}`, '_blank');
+      });
+      influencedNodes.appendChild(node);
+    });
+    influenced.appendChild(influencedNodes);
+    treeWrap.appendChild(influenced);
+
+    p2.appendChild(treeWrap);
+
+    // "Xem thêm" gợi ý
+    const watchNote2 = el('div', 'dc-watch-note');
+    const suggestDir = directorData.influenced_by[0];
+    watchNote2.innerHTML = `<span>🎯</span> <em>Muốn hiểu sâu hơn về ${dirName}? Xem phim của <b>${suggestDir}</b> — người thầy của họ</em>`;
+    p2.appendChild(watchNote2);
+
+    panels.appendChild(p2);
+  }
+
+  // PANEL 3: Quick Analysis
+  const p3 = el('div', 'dc-panel');
+  p3.dataset.panel = 'analysis';
+
+  const rating = parseFloat(movie.rating) || 0;
+  const year   = parseInt(movie.year)   || 0;
+
+  // Chấm điểm sơ bộ theo metadata
+  const scores = [
+    {
+      label: 'Ảnh hưởng lịch sử',
+      icon: '📜',
+      score: year < 1980 ? 95 : year < 2000 ? 75 : year < 2010 ? 55 : 40,
+      note: year < 1980 ? 'Phim cổ điển — có thể là kiệt tác định hình thể loại'
+          : year < 2000 ? 'Thời kỳ vàng Hollywood mới'
+          : year < 2010 ? 'Giai đoạn đa dạng hóa điện ảnh'
+          : 'Phim đương đại — legacy chưa được kiểm chứng bởi thời gian',
+    },
+    {
+      label: 'Độ tiếp cận',
+      icon: '👥',
+      score: rating >= 8 ? 85 : rating >= 7 ? 70 : rating >= 6 ? 55 : 40,
+      note: rating >= 8 ? 'Rating cao — khả năng cao là "watch with anyone" film'
+          : rating >= 7 ? 'Được đánh giá tốt — phù hợp nhiều đối tượng'
+          : 'Rating trung bình — thường là phim "acquired taste"',
+    },
+    {
+      label: 'Phức tạp thể loại',
+      icon: '🧩',
+      score: (() => {
+        const g = (detail?.genres || movie.genre || '').toLowerCase();
+        if (g.includes('drama') && (g.includes('thriller') || g.includes('mystery'))) return 88;
+        if (g.includes('sci-fi') || g.includes('mystery')) return 78;
+        if (g.includes('drama') || g.includes('crime')) return 65;
+        if (g.includes('action') || g.includes('comedy')) return 45;
+        return 55;
+      })(),
+      note: (() => {
+        const g = (detail?.genres || movie.genre || '').toLowerCase();
+        if (g.includes('drama') && (g.includes('thriller') || g.includes('mystery'))) return 'Đa thể loại — nhiều lớp kỹ thuật để khám phá';
+        if (g.includes('sci-fi') || g.includes('mystery')) return 'Thể loại có độ phức tạp narrative cao';
+        if (g.includes('drama') || g.includes('crime')) return 'Tập trung vào character và subtext';
+        return 'Thể loại entertainment-first — kỹ thuật phục vụ enjoyment';
+      })(),
+    },
+    {
+      label: 'Giá trị học thuật',
+      icon: '🎓',
+      score: (() => {
+        const isClassic = year < 1990 && rating >= 7.5;
+        const isHighRated = rating >= 8.0;
+        const hasDirectorData = !!directorData;
+        return (isClassic ? 40 : 0) + (isHighRated ? 35 : 15) + (hasDirectorData ? 25 : 10);
+      })(),
+      note: directorData
+        ? `${detail.director.split(',')[0]} có influence tree được ghi nhận — phim lý tưởng để học phong cách`
+        : 'Dựa trên rating và thể loại — xem kết hợp với phim cùng thể loại để so sánh kỹ thuật',
+    },
+  ];
+
+  const scoresWrap = el('div', 'dc-scores-wrap');
+  scores.forEach((s, i) => {
+    const row = el('div', 'dc-score-row');
+    row.style.animationDelay = `${i * 80}ms`;
+    row.innerHTML = `
+      <div class="dc-score-hdr">
+        <span class="dc-score-icon">${s.icon}</span>
+        <span class="dc-score-label">${s.label}</span>
+        <span class="dc-score-val">${s.score}<span class="dc-score-max">/100</span></span>
+      </div>
+      <div class="dc-score-bar-wrap">
+        <div class="dc-score-bar-fill" style="--score-w:${s.score}%;--score-color:${
+          s.score >= 75 ? '#44cc88' : s.score >= 55 ? '#f5c518' : '#ff8844'
+        }"></div>
+      </div>
+      <div class="dc-score-note">${s.note}</div>`;
+    scoresWrap.appendChild(row);
+  });
+  p3.appendChild(scoresWrap);
+
+  // "Xem phim này như một học sinh điện ảnh" tip
+  const filmTip = el('div', 'dc-film-tip');
+  const genreFirst = (detail?.genres || movie.genre || '').split(',')[0].trim();
+  const techHint = techniques[0] || 'Long Take';
+  filmTip.innerHTML = `
+    <div class="dc-film-tip-title">🎓 Bài tập xem phim</div>
+    <div class="dc-film-tip-body">
+      Lần xem này, thử chú ý <strong>${techHint}</strong> — 
+      mỗi khi bạn nhận ra kỹ thuật này được dùng, hỏi: 
+      <em>"Đạo diễn muốn tôi cảm thấy gì lúc này?"</em>
+    </div>`;
+  p3.appendChild(filmTip);
+
+  panels.appendChild(p3);
+
+  body.appendChild(panels);
+
+  // ── WIRE UP TABS ──
+  tabs.querySelectorAll('.dc-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabId = btn.dataset.tab;
+      tabs.querySelectorAll('.dc-tab-btn').forEach(b => b.classList.remove('dc-tab-active'));
+      btn.classList.add('dc-tab-active');
+      panels.querySelectorAll('.dc-panel').forEach(p => p.classList.remove('dc-panel-active'));
+      const target = panels.querySelector(`[data-panel="${tabId}"]`);
+      if (target) target.classList.add('dc-panel-active');
+    });
+  });
+
+  // ── TOGGLE OPEN/CLOSE ──
+  const toggleBtn = hdr.querySelector('.dc-toggle-btn');
+  const toggleIcon = hdr.querySelector('.dc-toggle-icon');
+  const toggleLabel = hdr.querySelector('.dc-toggle-label');
+
+  toggleBtn.addEventListener('click', () => {
+    const isOpen = !body.classList.contains('dc-body-hidden');
+    if (isOpen) {
+      body.classList.add('dc-body-hidden');
+      toggleIcon.textContent = '▶';
+      toggleLabel.textContent = 'Khám phá';
+      hdr.classList.remove('dc-header-open');
+    } else {
+      body.classList.remove('dc-body-hidden');
+      toggleIcon.textContent = '▼';
+      toggleLabel.textContent = 'Thu gọn';
+      hdr.classList.add('dc-header-open');
+      // Animate score bars
+      setTimeout(() => {
+        body.querySelectorAll('.dc-score-bar-fill').forEach(b => b.classList.add('dc-bar-animate'));
+      }, 100);
+    }
+  });
+
+  sec.appendChild(hdr);
+  sec.appendChild(body);
+
+  // Insert vào right column trước Similar movies
+  container.appendChild(sec);
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   WHERE WAS THIS FILMED — v2, xem trong app
+   Dùng Leaflet.js (free) + Wikimedia Commons ảnh
+   Thêm vào <head>:
+     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+══════════════════════════════════════════════════════════════ */
+
+const WWTF_CACHE = new Map();
+
+async function fetchFilmingLocations(movie, detail) {
+  const key = movie.tmdb_id || movie.title;
+  if (WWTF_CACHE.has(key)) return WWTF_CACHE.get(key);
+
+  const title = movie.title || movie.name || '';
+  const year  = (movie.year || '').toString().slice(0, 4);
+
+  try {
+    // 1. Tìm Wikipedia page
+    const searchRes = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=query&list=search` +
+      `&srsearch=${encodeURIComponent(title + ' film ' + year)}` +
+      `&srlimit=1&format=json&origin=*`
+    );
+    const searchData = await searchRes.json();
+    const pageTitle  = searchData?.query?.search?.[0]?.title;
+    if (!pageTitle) return null;
+
+    // 2. Lấy wikitext — tìm filming/production section
+    const fullRes  = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=parse&page=` +
+      `${encodeURIComponent(pageTitle)}&prop=sections|wikitext&format=json&origin=*`
+    );
+    const fullData = await fullRes.json();
+    const sections = fullData?.parse?.sections || [];
+    const fullText = fullData?.parse?.wikitext?.['*'] || '';
+
+    const filmingSection = sections.find(s =>
+      /filming|production|principal photography|locations/i.test(s.line)
+    );
+    let locationText = fullText;
+    if (filmingSection) {
+      const idx = fullText.indexOf('==' + filmingSection.line);
+      if (idx !== -1) locationText = fullText.slice(idx, idx + 4000);
+    }
+
+    // 3. Extract địa danh từ [[wikilinks]]
+    const seen = new Set();
+    const candidates = [];
+    const re = /\[\[([^\]|#]+?)(?:\|[^\]]+?)?\]\]/g;
+    let m;
+    while ((m = re.exec(locationText)) !== null) {
+      const c = m[1].trim();
+      if (seen.has(c)) continue;
+      seen.add(c);
+      if (/film|actor|director|studio|award|list of|category/i.test(c)) continue;
+      if (c.length < 3 || c.length > 70) continue;
+      if (/,|city|county|borough|district|street|park|studio|island|mountain|river|lake|bay|beach|castle|palace|museum|tower|bridge|square|plaza|state|county/i.test(c) ||
+          /^[A-Z][a-z]/.test(c)) {
+        candidates.push(c);
+      }
+    }
+
+    // 4. Geocode + lấy ảnh Wikimedia cùng lúc
+    const results = [];
+    for (const name of candidates.slice(0, 7)) {
+      try {
+        // Geocode
+        const geoRes  = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name)}` +
+          `&format=json&limit=1&addressdetails=1`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const geoData = await geoRes.json();
+        if (!geoData[0]) { await sleep(1100); continue; }
+
+        const g = geoData[0];
+        const country = g.address?.country || '';
+        const city    = g.address?.city || g.address?.town || g.address?.state || '';
+
+        // Ảnh từ Wikimedia Commons qua Wikipedia API
+        let imgUrl = null;
+        try {
+          const imgRes  = await fetch(
+            `https://en.wikipedia.org/w/api.php?action=query&titles=` +
+            `${encodeURIComponent(name)}&prop=pageimages&pithumbsize=400` +
+            `&format=json&origin=*`
+          );
+          const imgData = await imgRes.json();
+          const pages   = Object.values(imgData?.query?.pages || {});
+          imgUrl = pages[0]?.thumbnail?.source || null;
+        } catch { /* no image */ }
+
+        results.push({
+          name,
+          display: [city, country].filter(Boolean).join(', ') || g.display_name.split(',').slice(0,2).join(','),
+          lat: parseFloat(g.lat),
+          lon: parseFloat(g.lon),
+          imgUrl,
+          osmType: g.type,
+        });
+
+        await sleep(1100); // Nominatim rate limit
+      } catch { await sleep(500); }
+    }
+
+    WWTF_CACHE.set(key, results.length ? results : null);
+    return results.length ? results : null;
+
+  } catch (e) {
+    console.warn('WWTF fetch error:', e);
+    return null;
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function renderFilmedLocations(container, movie, detail) {
+  const sec = el('div', 'wwtf-section');
+
+  const hdr = el('div', 'wwtf-header');
+  hdr.innerHTML = `
+    <div class="wwtf-header-left">
+      <span class="wwtf-icon">📍</span>
+      <div>
+        <div class="wwtf-title">Where Was This Filmed?</div>
+        <div class="wwtf-subtitle">Địa điểm quay thực tế</div>
+      </div>
+    </div>
+    <button class="wwtf-toggle-btn">
+      <span class="wwtf-toggle-icon">▶</span>
+      <span class="wwtf-toggle-label">Khám phá</span>
+    </button>`;
+
+  const body = el('div', 'wwtf-body wwtf-hidden');
+  let loaded = false;
+
+  hdr.querySelector('.wwtf-toggle-btn').addEventListener('click', () => {
+    const isOpen = !body.classList.contains('wwtf-hidden');
+    if (isOpen) {
+      body.classList.add('wwtf-hidden');
+      hdr.querySelector('.wwtf-toggle-icon').textContent = '▶';
+      hdr.querySelector('.wwtf-toggle-label').textContent = 'Khám phá';
+      hdr.classList.remove('wwtf-header-open');
+    } else {
+      body.classList.remove('wwtf-hidden');
+      hdr.querySelector('.wwtf-toggle-icon').textContent = '▼';
+      hdr.querySelector('.wwtf-toggle-label').textContent = 'Thu gọn';
+      hdr.classList.add('wwtf-header-open');
+      if (!loaded) { loaded = true; initWwtf(body, movie, detail); }
+    }
+  });
+
+  sec.appendChild(hdr);
+  sec.appendChild(body);
+  container.appendChild(sec);
+}
+
+async function initWwtf(body, movie, detail) {
+  // Loader
+  const loader = el('div', 'wwtf-loader');
+  loader.innerHTML = `
+    <div class="wwtf-loader-dots"><span></span><span></span><span></span></div>
+    <div class="wwtf-loader-text">Đang tìm địa điểm quay...</div>`;
+  body.appendChild(loader);
+
+  const locations = await fetchFilmingLocations(movie, detail);
+  loader.remove();
+
+  if (!locations?.length) {
+    body.innerHTML = `
+      <div class="wwtf-empty">
+        <span>🗺️</span>
+        <p>Không tìm thấy thông tin địa điểm quay.</p>
+        <a href="https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent((movie.title||movie.name)+' film')}"
+           target="_blank" class="wwtf-wiki-link">Xem Wikipedia ↗</a>
+      </div>`;
+    return;
+  }
+
+  // ── LAYOUT: map trái, detail phải ──
+  const wrap = el('div', 'wwtf-wrap');
+
+  // Sidebar danh sách địa điểm
+  const sidebar = el('div', 'wwtf-sidebar');
+  locations.forEach((loc, i) => {
+    const item = el('div', `wwtf-loc-item${i === 0 ? ' wwtf-loc-active' : ''}`);
+    item.dataset.idx = i;
+    item.innerHTML = `
+      <div class="wwtf-loc-num">${i + 1}</div>
+      <div class="wwtf-loc-text">
+        <div class="wwtf-loc-name">${loc.name}</div>
+        <div class="wwtf-loc-sub">${loc.display}</div>
+      </div>`;
+    sidebar.appendChild(item);
+  });
+  wrap.appendChild(sidebar);
+
+  // Panel phải: map + detail card
+  const right = el('div', 'wwtf-right');
+
+  // Map container
+  const mapEl = el('div', 'wwtf-map-el');
+  mapEl.id = 'wwtf-map-' + Date.now();
+  right.appendChild(mapEl);
+
+  // Detail card — hiện khi click pin
+  const detailCard = el('div', 'wwtf-detail-card wwtf-detail-hidden');
+  right.appendChild(detailCard);
+
+  wrap.appendChild(right);
+  body.appendChild(wrap);
+
+  // Init Leaflet map
+  if (typeof L === 'undefined') {
+    // Leaflet chưa load — inject script
+    await injectLeaflet();
+  }
+
+  const map = L.map(mapEl.id, { zoomControl: true, scrollWheelZoom: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 18,
+  }).addTo(map);
+
+  // Custom marker icon
+  const makeIcon = (num, active = false) => L.divIcon({
+    className: '',
+    html: `<div class="wwtf-marker${active ? ' wwtf-marker-active' : ''}">${num}</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+
+  // Fit bounds
+  const latLngs = locations.map(l => [l.lat, l.lon]);
+  if (latLngs.length > 1) map.fitBounds(latLngs, { padding: [30, 30] });
+  else map.setView(latLngs[0], 10);
+
+  // Add markers
+  const markers = locations.map((loc, i) => {
+    const marker = L.marker([loc.lat, loc.lon], { icon: makeIcon(i + 1) }).addTo(map);
+    marker.on('click', () => selectLocation(i));
+    return marker;
+  });
+
+  // Select location — cập nhật sidebar + detail card + marker active
+  function selectLocation(idx) {
+    const loc = locations[idx];
+
+    // Sidebar
+    sidebar.querySelectorAll('.wwtf-loc-item').forEach(el => el.classList.remove('wwtf-loc-active'));
+    sidebar.querySelector(`[data-idx="${idx}"]`)?.classList.add('wwtf-loc-active');
+
+    // Marker
+    markers.forEach((mk, i) => mk.setIcon(makeIcon(i + 1, i === idx)));
+
+    // Pan map
+    map.panTo([loc.lat, loc.lon], { animate: true, duration: 0.5 });
+
+    // Detail card
+    detailCard.classList.remove('wwtf-detail-hidden');
+    detailCard.innerHTML = `
+      <div class="wwtf-dc-inner">
+        ${loc.imgUrl ? `
+          <div class="wwtf-dc-img-wrap">
+            <img src="${loc.imgUrl}" class="wwtf-dc-img" alt="${loc.name}" loading="lazy"/>
+          </div>` : `
+          <div class="wwtf-dc-img-placeholder">
+            <span>📸</span>
+            <span>Không có ảnh</span>
+          </div>`}
+        <div class="wwtf-dc-info">
+          <div class="wwtf-dc-name">${loc.name}</div>
+          <div class="wwtf-dc-sub">${loc.display}</div>
+          <div class="wwtf-dc-actions">
+            <a class="wwtf-dc-btn wwtf-dc-btn-maps"
+               href="https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lon}"
+               target="_blank">🗺️ Google Maps</a>
+            <a class="wwtf-dc-btn wwtf-dc-btn-sv"
+               href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${loc.lat},${loc.lon}"
+               target="_blank">👁️ Street View</a>
+            <a class="wwtf-dc-btn wwtf-dc-btn-wiki"
+               href="https://en.wikipedia.org/wiki/${encodeURIComponent(loc.name)}"
+               target="_blank">📖 Wikipedia</a>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // Sidebar click
+  sidebar.querySelectorAll('.wwtf-loc-item').forEach(item => {
+    item.addEventListener('click', () => selectLocation(parseInt(item.dataset.idx)));
+  });
+
+  // Auto-select đầu tiên
+  selectLocation(0);
+}
+
+async function injectLeaflet() {
+  return new Promise(resolve => {
+    if (typeof L !== 'undefined') { resolve(); return; }
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = resolve;
+    document.head.appendChild(script);
+  });
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   MUSIC IN THIS FILM
+   Tích hợp: thêm renderFilmMusic(right, m, d); vào renderDetailBody()
+══════════════════════════════════════════════════════════════ */
+
+const MUSIC_CACHE = new Map();
+
+async function fetchFilmSoundtrack(movie, detail) {
+  const key = movie.tmdb_id || movie.title;
+  if (MUSIC_CACHE.has(key)) return MUSIC_CACHE.get(key);
+
+  const title = movie.title || movie.name || '';
+  const year  = (movie.year || '').toString().slice(0, 4);
+
+  try {
+    // 1. Tìm Wikipedia page của phim
+    const searchRes = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=query&list=search` +
+      `&srsearch=${encodeURIComponent(title + ' film ' + year + ' soundtrack')}` +
+      `&srlimit=3&format=json&origin=*`
+    );
+    const searchData = await searchRes.json();
+    const results    = searchData?.query?.search || [];
+
+    // Ưu tiên page có "soundtrack" trong title, fallback về page phim chính
+    const page = results.find(r => /soundtrack/i.test(r.title)) || results[0];
+    if (!page) return null;
+
+    // 2. Lấy wikitext
+    const wtRes  = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=parse&page=` +
+      `${encodeURIComponent(page.title)}&prop=wikitext&format=json&origin=*`
+    );
+    const wtData = await wtRes.json();
+    const wikitext = wtData?.parse?.wikitext?.['*'] || '';
+
+    // 3. Parse tracklist từ wikitext
+    // Patterns: | "Song Title" || Artist || Year
+    //           | title = "Song" | artist = "X"
+    const tracks = [];
+    const seen   = new Set();
+
+    // Pattern 1: tracklist table rows
+    const tableRowRe = /\|\s*[""]([^""]+)[""]\s*\|\|?\s*([^\|\n]+?)(?:\|\|([^\|\n]+))?(?:\n|\|)/g;
+    let m;
+    while ((m = tableRowRe.exec(wikitext)) !== null) {
+      const trackTitle = m[1].trim();
+      const artist     = m[2].replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1').trim();
+      const yearMatch  = m[3]?.match(/\d{4}/);
+      if (!trackTitle || seen.has(trackTitle)) continue;
+      seen.add(trackTitle);
+      tracks.push({ title: trackTitle, artist: cleanWikiText(artist), year: yearMatch?.[0] || year });
+    }
+
+    // Pattern 2: * "Song" by Artist
+    if (tracks.length < 3) {
+      const bulletRe = /[*#]\s*[""]([^""]{2,60})[""]\s*(?:by|–|-)\s*([^\n\[]{2,50})/g;
+      while ((m = bulletRe.exec(wikitext)) !== null) {
+        const trackTitle = m[1].trim();
+        const artist     = cleanWikiText(m[2].trim());
+        if (!trackTitle || seen.has(trackTitle)) continue;
+        seen.add(trackTitle);
+        tracks.push({ title: trackTitle, artist, year });
+      }
+    }
+
+    // Pattern 3: wikitext nếu là soundtrack album — lấy track listing
+    if (tracks.length < 3) {
+      const trackRe = /\|\s*title\s*=\s*[""]?([^""\n\|]+)[""]?.*?\|\s*(?:artist|performer|writer)\s*=\s*([^\n\|]+)/gs;
+      while ((m = trackRe.exec(wikitext)) !== null) {
+        const trackTitle = m[1].trim();
+        const artist     = cleanWikiText(m[2].trim());
+        if (!trackTitle || seen.has(trackTitle)) continue;
+        seen.add(trackTitle);
+        tracks.push({ title: trackTitle, artist, year });
+      }
+    }
+
+    if (!tracks.length) return null;
+
+    // 4. Fetch YouTube video ID cho mỗi track (dùng YouTube oEmbed trick)
+    const enriched = await Promise.all(
+      tracks.slice(0, 10).map(async t => {
+        const ytId = await searchYouTubeId(`${t.title} ${t.artist} official`);
+        return { ...t, ytId };
+      })
+    );
+
+    const result = enriched.filter(t => t.title);
+    MUSIC_CACHE.set(key, result);
+    return result;
+
+  } catch (e) {
+    console.warn('fetchFilmSoundtrack error:', e);
+    return null;
+  }
+}
+
+function cleanWikiText(str) {
+  return str
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, a, b) => b || a)
+    .replace(/\{\{[^}]+\}\}/g, '')
+    .replace(/'''?/g, '')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+}
+
+async function searchYouTubeId(query) {
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 200,
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        messages: [{ role: "user", content: `Find the YouTube video ID for: "${query}". Reply with ONLY the 11-character video ID, nothing else.` }]
+      })
+    });
+    const data = await response.json();
+    const text = data.content?.find(b => b.type === 'text')?.text?.trim() || '';
+    const match = text.match(/[a-zA-Z0-9_-]{11}/);
+    return match ? match[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderFilmMusic(container, movie, detail) {
+  const sec = el('div', 'fm-section');
+
+  const hdr = el('div', 'fm-header');
+  hdr.innerHTML = `
+    <div class="fm-header-left">
+      <span class="fm-icon">🎵</span>
+      <div>
+        <div class="fm-title">Music in This Film</div>
+        <div class="fm-subtitle">Nhạc được sử dụng trong phim</div>
+      </div>
+    </div>
+    <button class="fm-toggle-btn">
+      <span class="fm-toggle-icon">▶</span>
+      <span class="fm-toggle-label">Nghe</span>
+    </button>`;
+
+  const body  = el('div', 'fm-body fm-hidden');
+  let   loaded = false;
+
+  hdr.querySelector('.fm-toggle-btn').addEventListener('click', () => {
+    const isOpen = !body.classList.contains('fm-hidden');
+    if (isOpen) {
+      body.classList.add('fm-hidden');
+      hdr.querySelector('.fm-toggle-icon').textContent = '▶';
+      hdr.querySelector('.fm-toggle-label').textContent = 'Nghe';
+      hdr.classList.remove('fm-header-open');
+      // Dừng YouTube player nếu đang phát
+      body.querySelectorAll('.fm-yt-iframe').forEach(f => {
+        f.src = f.src; // reload = stop
+      });
+    } else {
+      body.classList.remove('fm-hidden');
+      hdr.querySelector('.fm-toggle-icon').textContent = '▼';
+      hdr.querySelector('.fm-toggle-label').textContent = 'Thu gọn';
+      hdr.classList.add('fm-header-open');
+      if (!loaded) { loaded = true; initFilmMusic(body, movie, detail); }
+    }
+  });
+
+  sec.appendChild(hdr);
+  sec.appendChild(body);
+  container.appendChild(sec);
+}
+
+async function initFilmMusic(body, movie, detail) {
+  // Loader
+  const loader = el('div', 'fm-loader');
+  loader.innerHTML = `
+    <div class="fm-loader-bars">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <div class="fm-loader-text">Đang tải danh sách nhạc...</div>`;
+  body.appendChild(loader);
+
+  const tracks = await fetchFilmSoundtrack(movie, detail);
+  loader.remove();
+
+  if (!tracks?.length) {
+    body.innerHTML = `
+      <div class="fm-empty">
+        <span>🎼</span>
+        <p>Không tìm thấy thông tin soundtrack cho phim này.</p>
+      </div>`;
+    return;
+  }
+
+  // ── LAYOUT: tracklist trái, player phải ──
+  const wrap = el('div', 'fm-wrap');
+
+  // Tracklist
+  const list = el('div', 'fm-list');
+  tracks.forEach((track, i) => {
+    const item = el('div', `fm-track-item${i === 0 ? ' fm-track-active' : ''}`);
+    item.dataset.idx = i;
+    item.innerHTML = `
+      <div class="fm-track-num">${i + 1}</div>
+      <div class="fm-track-info">
+        <div class="fm-track-title">${track.title}</div>
+        <div class="fm-track-artist">${track.artist || '—'}${track.year ? ` · ${track.year}` : ''}</div>
+      </div>
+      <div class="fm-track-play">▶</div>`;
+    list.appendChild(item);
+  });
+  wrap.appendChild(list);
+
+  // Player panel
+  const player = el('div', 'fm-player');
+  wrap.appendChild(player);
+  body.appendChild(wrap);
+
+  // External links bar
+  const linksBar = el('div', 'fm-links-bar');
+  const filmTitle = encodeURIComponent((movie.title || movie.name || '') + ' soundtrack');
+  linksBar.innerHTML = `
+    <span class="fm-links-label">Nghe đầy đủ:</span>
+    <a class="fm-ext-btn fm-spotify"
+       href="https://open.spotify.com/search/${filmTitle}"
+       target="_blank">Spotify</a>
+    <a class="fm-ext-btn fm-apple"
+       href="https://music.apple.com/search?term=${filmTitle}"
+       target="_blank">Apple Music</a>
+    <a class="fm-ext-btn fm-yt"
+       href="https://www.youtube.com/results?search_query=${filmTitle}"
+       target="_blank">YouTube</a>`;
+  body.appendChild(linksBar);
+
+  // Select track → render player
+  function selectTrack(idx) {
+    const track = tracks[idx];
+
+    // Update list
+    list.querySelectorAll('.fm-track-item').forEach(el => el.classList.remove('fm-track-active'));
+    list.querySelector(`[data-idx="${idx}"]`)?.classList.add('fm-track-active');
+
+    // Scroll into view
+    const activeItem = list.querySelector('.fm-track-active');
+    activeItem?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+    // Update play icons
+    list.querySelectorAll('.fm-track-play').forEach((el, i) => {
+      el.textContent = i === idx ? '⏸' : '▶';
+    });
+
+    // Build player
+    const spotifyQuery = encodeURIComponent(`${track.title} ${track.artist || ''}`);
+    const ytQuery = encodeURIComponent(`${track.title} ${track.artist || ''} official audio`);
+    player.innerHTML = `
+      <div class="fm-player-now">
+        <div class="fm-player-disc">
+          <div class="fm-disc-spin">🎵</div>
+        </div>
+        <div class="fm-player-meta">
+          <div class="fm-player-title">${track.title}</div>
+          <div class="fm-player-artist">${track.artist || 'Unknown artist'}</div>
+          ${track.year ? `<div class="fm-player-year">${track.year}</div>` : ''}
+        </div>
+      </div>
+      <div class="fm-yt-wrap">
+        <iframe
+          class="fm-yt-iframe"
+          ${track.ytId 
+            ? `<iframe src="https://www.youtube.com/embed/${track.ytId}?autoplay=1&rel=0" 
+                allow="autoplay; encrypted-media" allowfullscreen
+                style="width:100%;height:200px;border:none;border-radius:8px;"></iframe>`
+            : `<a href="https://www.youtube.com/results?search_query=${ytQuery}" target="_blank" 
+                style="color:#f5c518;padding:20px;display:block;text-align:center;">▶ Mở YouTube</a>`
+          }
+          allow="autoplay"
+          style="border:none;width:100%;height:200px;border-radius:8px;"
+          loading="lazy">
+        </iframe>
+      </div>
+      <div class="fm-player-nav">
+        <button class="fm-nav-btn" data-dir="-1">⏮ Trước</button>
+        <button class="fm-nav-btn" data-dir="1">Tiếp ⏭</button>
+      </div>`;
+
+    // Nav buttons
+    player.querySelectorAll('.fm-nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const next = (idx + parseInt(btn.dataset.dir) + tracks.length) % tracks.length;
+        selectTrack(next);
+      });
+    });
+  }
+
+  // List click
+  list.querySelectorAll('.fm-track-item').forEach(item => {
+    item.addEventListener('click', () => selectTrack(parseInt(item.dataset.idx)));
+  });
+
+  // Auto-select đầu tiên
+  selectTrack(0);
 }
