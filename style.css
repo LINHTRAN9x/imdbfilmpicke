@@ -152,6 +152,8 @@ img { display: block; }
 /* ════════════ SEARCH ════════════ */
 #search-bar {
   position: sticky;
+  display: flex;
+  justify-content: space-between;
   top: 53px;        /* ← chiều cao của header */
   z-index: 99;
   background: var(--bg-panel);
@@ -230,7 +232,7 @@ img { display: block; }
 /* ════════════ TABS ════════════ */
 #tab-bar {
   position: sticky;
-  top: 101px;       /* ← header + search */
+  top: 104px;       /* ← header + search */
   z-index: 98;
   display: flex;
   gap: 2px;
@@ -393,7 +395,7 @@ img { display: block; }
   gap: 10px;
   border-bottom: 1px solid var(--border);
 }
-#status-text { color: var(--gray); flex: 1; }
+#status-text { color: var(--gray); flex: 1; display: none; }
 #status-url { color: var(--gold); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 500px; }
 #status-count { color: var(--gold); font-weight: 700; margin-left: auto; }
 
@@ -4001,7 +4003,7 @@ img { display: block; }
   border-radius: 10px;
   overflow: hidden;
   animation: slideDown .2s ease;
-  height: 85vh;
+  height: 100vh;
 }
 .vietsub-panel {
   width: 100%;
@@ -4015,7 +4017,7 @@ img { display: block; }
 .vs-search-row {
   display: flex;
   gap: 6px;
-  padding: 10px;
+  padding: 4px;
 }
 .vs-input {
   flex: 1;
@@ -5143,3 +5145,7 @@ img { display: block; }
   color: var(--gray); font-size: 0.82rem;
 }
 .fm-empty span { font-size: 1.8rem; }
+
+
+
+

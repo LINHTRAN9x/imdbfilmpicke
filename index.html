@@ -6,6 +6,7 @@
   <title>IMDb – What to Watch</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -45,7 +46,15 @@
     <button id="btn-search-imdb" class="search-btn">🌐 Tìm trên IMDb</button>
     <button id="btn-search-clear" class="search-clear">✕</button>
   </div>
+  <!-- ══════════════════════════════════ STATUS BAR ══════════════════════════════════ -->
+  <div id="status-bar">
+    <span id="status-text">Đang khởi động...</span>
+    <span id="status-url"></span>
+    <span id="status-count"></span>
+  </div>
 </div>
+
+
 
 <!-- ══════════════════════════════════ TABS ══════════════════════════════════ -->
 <nav id="tab-bar">
@@ -108,12 +117,7 @@
   </div>
 </div>
 
-<!-- ══════════════════════════════════ STATUS BAR ══════════════════════════════════ -->
-<div id="status-bar">
-  <span id="status-text">Đang khởi động...</span>
-  <span id="status-url"></span>
-  <span id="status-count"></span>
-</div>
+
 
 <!-- ══════════════════════════════════ MAIN CONTENT ══════════════════════════════════ -->
 <main id="main-content">

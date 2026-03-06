@@ -221,6 +221,7 @@ function loadStorage() {
 
   // User ID riêng cho từng máy
   STATE.userId = localStorage.getItem('imdb_user_id');
+  
   if (!STATE.userId) {
     STATE.userId = Math.random().toString(36).slice(2) + Date.now().toString(36);
     localStorage.setItem('imdb_user_id', STATE.userId);
@@ -8405,3 +8406,799 @@ async function initFilmMusic(body, movie, detail) {
   // Auto-select đầu tiên
   selectTrack(0);
 }
+
+
+/* ═══════════════════════════════════════════════════════════
+   IMDb — INTRO SCREEN  (Marathon-style sci-fi)
+   Drop this at the END of app.js, or call initIntro() on DOMContentLoaded
+   ═══════════════════════════════════════════════════════════ */
+
+(async  function () {
+  /* ── CONFIG ── */
+  const SKIP_IF_VISITED = true;   // sau lần đầu sẽ không hiện nữa (set false để luôn hiện)
+  const SESSION_KEY     = 'imdb_intro_seen';
+  const TOTAL_MS        = 5200;   // tổng thời gian intro (ms) trước khi tự skip
+
+  /* ── SKIP nếu đã thấy trong session ── */
+  if (SKIP_IF_VISITED && sessionStorage.getItem(SESSION_KEY)) return;
+
+  // Màn click to enter
+  const clickScreen = document.createElement('div');
+  clickScreen.innerHTML = `
+    <div style="
+      position:fixed; inset:0; z-index:999999;
+      background:#03020a;
+      background:#03020a !important;
+      opacity:1 !important;
+      isolation:isolate;
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; font-family:'Share Tech Mono',monospace;
+      color:rgba(0,255,200,0.6); font-size:0.85rem;
+      letter-spacing:0.4em; text-transform:uppercase;
+      animation: ctePulse 1.2s ease infinite alternate;
+    ">
+      <style>@keyframes ctePulse { from{opacity:0.3} to{opacity:1} }</style>
+      [ CLICK TO ENTER ]
+    </div>
+  `;
+  document.body.appendChild(clickScreen);
+
+  // Chờ click rồi mới chạy intro + audio
+  await new Promise(resolve => clickScreen.addEventListener('click', () => {
+    clickScreen.remove();
+    resolve();
+  }, { once: true }));
+
+  /* ─────────────────────────────────────
+     CSS  (inject vào <head>)
+  ───────────────────────────────────── */
+  const css = `
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@700;900&display=swap');
+
+#imdb-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: #03020a;
+  overflow: hidden;
+  font-family: 'Share Tech Mono', monospace;
+  cursor: none;
+}
+
+/* ── CANVAS layer (particle / glitch bg) ── */
+#intro-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* ── chromatic aberration overlay ── */
+#imdb-intro::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(0, 255, 200, 0.015) 3px,
+      rgba(0, 255, 200, 0.015) 4px
+    );
+  pointer-events: none;
+  z-index: 2;
+  animation: introScanRoll 8s linear infinite;
+}
+@keyframes introScanRoll {
+  from { background-position: 0 0; }
+  to   { background-position: 0 100px; }
+}
+
+/* ── vignette ── */
+#imdb-intro::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 80% at 50% 50%,
+    transparent 40%,
+    rgba(0,0,0,0.7) 100%
+  );
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── CENTER CONTENT ── */
+.intro-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  z-index: 10;
+}
+
+/* ── LOGO ── */
+.intro-logo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 900;
+  font-size: clamp(4rem, 12vw, 9rem);
+  letter-spacing: 0.25em;
+  color: #e8e8f0;
+  line-height: 1;
+  position: relative;
+  animation: introLogoIn 0.6s cubic-bezier(0.22,1,0.36,1) 0.3s both;
+  text-shadow:
+    0 0 40px rgba(0,255,200,0.3),
+    0 0 80px rgba(0,255,200,0.1);
+}
+.intro-logo span {
+  color: #e84040;
+  position: relative;
+}
+.intro-logo span::after {
+  content: attr(data-t);
+  position: absolute;
+  inset: 0;
+  color: #00ffc8;
+  clip-path: inset(30% 0 40% 0);
+  transform: translateX(3px);
+  opacity: 0;
+  animation: introLogoGlitch 4s 1.5s infinite;
+}
+@keyframes introLogoGlitch {
+  0%,90%,100% { opacity:0; transform:translateX(3px); }
+  91%  { opacity:0.8; transform:translateX(-4px) skewX(-5deg); clip-path:inset(10% 0 70% 0); }
+  92%  { opacity:0.6; transform:translateX(5px);  clip-path:inset(60% 0 10% 0); }
+  93%  { opacity:0;   transform:translateX(0); }
+}
+
+@keyframes introLogoIn {
+  from { opacity:0; transform: scaleX(0.4) translateY(-20px); filter:blur(20px); }
+  to   { opacity:1; transform: scaleX(1)   translateY(0);     filter:blur(0); }
+}
+
+.intro-sub {
+  font-size: clamp(0.65rem, 1.5vw, 0.9rem);
+  letter-spacing: 0.55em;
+  color: rgba(0,255,200,0.7);
+  text-transform: uppercase;
+  margin-top: 6px;
+  animation: introFadeUp 0.5s ease 0.8s both;
+}
+
+/* ── DIVIDER LINE ── */
+.intro-divider {
+  width: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #00ffc8, rgba(232,64,64,0.8), transparent);
+  margin: 28px 0 24px;
+  animation: introDividerExpand 0.7s ease 1.0s both;
+}
+@keyframes introDividerExpand {
+  from { width: 0; opacity:0; }
+  to   { width: min(420px, 60vw); opacity:1; }
+}
+
+/* ── PIXEL ICONS ROW  (like the screenshot) ── */
+.intro-icons-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 18px;
+  animation: introFadeUp 0.4s ease 1.2s both;
+}
+.intro-icon {
+  width: 28px;
+  height: 28px;
+  position: relative;
+  flex-shrink: 0;
+}
+.intro-icon svg {
+  width: 100%;
+  height: 100%;
+}
+.intro-icon-line {
+  width: clamp(60px, 12vw, 140px);
+  height: 1px;
+  background: linear-gradient(90deg, rgba(240,192,48,0.2), rgba(240,192,48,0.8), rgba(240,192,48,0.2));
+  position: relative;
+}
+.intro-icon-line::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -1px;
+  height: 3px;
+  width: 0;
+  background: #f0c030;
+  animation: introLineProgress 2.2s ease 1.4s both;
+  box-shadow: 0 0 8px #f0c030;
+}
+@keyframes introLineProgress {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+/* ── STATUS LINES ── */
+.intro-status-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  animation: introFadeUp 0.4s ease 1.3s both;
+}
+.intro-status-line {
+  font-size: clamp(0.6rem, 1.2vw, 0.78rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(240,192,48,0.9);
+  text-align: center;
+  min-height: 1.2em;
+}
+.intro-status-line.dim { color: rgba(240,192,48,0.45); font-size: 0.65rem; }
+.intro-blink {
+  animation: introBlink 0.6s ease infinite alternate;
+}
+@keyframes introBlink {
+  from { opacity: 1; }
+  to   { opacity: 0.2; }
+}
+
+/* ── PROGRESS BAR ── */
+.intro-progress-wrap {
+  position: relative;
+  width: min(320px, 55vw);
+  margin-top: 24px;
+  animation: introFadeUp 0.4s ease 1.5s both;
+}
+.intro-progress-track {
+  width: 100%;
+  height: 2px;
+  background: rgba(255,255,255,0.08);
+  position: relative;
+  overflow: visible;
+}
+.intro-progress-track::before,
+.intro-progress-track::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  width: 1px;
+  height: 8px;
+  background: rgba(240,192,48,0.4);
+}
+.intro-progress-track::before { left: 0; }
+.intro-progress-track::after  { right: 0; }
+.intro-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, rgba(232,64,64,0.8), #f0c030, #00ffc8);
+  transition: width 0.1s linear;
+  position: relative;
+}
+.intro-progress-fill::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  width: 2px;
+  height: 10px;
+  background: #fff;
+  box-shadow: 0 0 8px #fff, 0 0 16px rgba(240,192,48,0.8);
+}
+.intro-progress-pct {
+  position: absolute;
+  right: 0;
+  top: 8px;
+  font-size: 0.65rem;
+  color: rgba(240,192,48,0.6);
+  letter-spacing: 0.1em;
+}
+
+/* ── SKIP BUTTON ── */
+.intro-skip {
+  position: absolute;
+  bottom: 28px;
+  right: 32px;
+  z-index: 20;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.35);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 7px 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+  animation: introFadeUp 0.4s ease 2s both;
+}
+.intro-skip:hover {
+  border-color: rgba(232,64,64,0.6);
+  color: rgba(232,64,64,0.8);
+}
+
+/* ── TOP HUD strip (like the screenshot) ── */
+.intro-hud-top {
+  position: absolute;
+  top: 18px;
+  left: 0;
+  right: 0;
+  transform: none;
+  white-space: nowrap; 
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  animation: introFadeUp 0.5s ease 0.5s both;
+  pointer-events: none;
+}
+.intro-hud-row {
+  display: flex;
+  gap: 16px;
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  color: rgba(0,255,200,0.4);
+  text-transform: uppercase;
+}
+.intro-hud-row.bright { color: rgba(0,255,200,0.7); }
+.intro-hud-checker {
+  display: flex;
+  gap: 2px;
+}
+.intro-hud-checker span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: rgba(0,255,200,0.5);
+  animation: introCheckerAlt 0.3s ease infinite alternate;
+}
+.intro-hud-checker span:nth-child(even) {
+  background: transparent;
+  border: 1px solid rgba(0,255,200,0.3);
+  animation-delay: 0.15s;
+}
+
+/* ── CORNER markers ── */
+.intro-corner {
+  position: absolute;
+  z-index: 15;
+  width: 24px;
+  height: 24px;
+  border-color: rgba(0,255,200,0.3);
+  border-style: solid;
+  animation: introFadeUp 0.3s ease 0.2s both;
+  pointer-events: none;
+}
+.intro-corner.tl { top:16px; left:16px; border-width:1px 0 0 1px; }
+.intro-corner.tr { top:16px; right:16px; border-width:1px 1px 0 0; }
+.intro-corner.bl { bottom:16px; left:16px; border-width:0 0 1px 1px; }
+.intro-corner.br { bottom:16px; right:16px; border-width:0 1px 1px 0; }
+
+/* ── EXIT animation ── */
+#imdb-intro.intro-exit {
+  animation: introExit 0.6s cubic-bezier(0.4,0,1,1) forwards;
+}
+@keyframes introExit {
+  0%   { opacity:1; transform:scale(1); filter:blur(0); }
+  30%  { opacity:1; transform:scale(1.02); filter:blur(0) brightness(1.5); }
+  60%  { opacity:0.5; transform:scale(0.98) skewY(-1deg); filter:blur(4px) brightness(2); }
+  100% { opacity:0; transform:scale(1.05); filter:blur(12px); pointer-events:none; }
+}
+
+/* ── GLITCH FLASH ── */
+.intro-glitch-flash {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,255,200,0.06);
+  z-index: 20;
+  pointer-events: none;
+  opacity: 0;
+}
+.intro-glitch-flash.fire {
+  animation: glitchFlash 0.12s ease forwards;
+}
+@keyframes glitchFlash {
+  0%   { opacity:0.8; }
+  100% { opacity:0; }
+}
+
+@keyframes introFadeUp {
+  from { opacity:0; transform:translateY(12px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+  `;
+
+  /* ─────────────────────────────────────
+     HTML
+  ───────────────────────────────────── */
+  const html = `
+<div id="imdb-intro">
+  <canvas id="intro-canvas"></canvas>
+
+  <!-- Corner brackets -->
+  <div class="intro-corner tl"></div>
+  <div class="intro-corner tr"></div>
+  <div class="intro-corner bl"></div>
+  <div class="intro-corner br"></div>
+
+  <!-- Glitch flash layer -->
+  <div class="intro-glitch-flash" id="intro-gf"></div>
+
+  <!-- Top HUD -->
+  <div class="intro-hud-top">
+    <div class="intro-hud-row bright" id="intro-hud-links">
+      LINK &nbsp;LINK &nbsp;LINK &nbsp;LINK &nbsp;LINK &nbsp;LINK
+    </div>
+    <div class="intro-hud-row" id="intro-hud-pkgs">
+      :: PACKAGE &nbsp;PACKAGE &nbsp;PACKAGE &nbsp;PACKAGE ::
+    </div>
+    <div class="intro-hud-checker" id="intro-checker">
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+    </div>
+  </div>
+
+  <!-- Main center -->
+  <div class="intro-center">
+    <div class="intro-logo">
+      <span data-t="IMDb">IMDb</span>
+    </div>
+    <div class="intro-sub">WHAT TO WATCH &nbsp;// SYSTEM INITIALIZING</div>
+
+    <div class="intro-divider"></div>
+
+    <!-- Pixel icon + line + icon (like screenshot) -->
+    <div class="intro-icons-row">
+      <div class="intro-icon">
+        <svg viewBox="0 0 28 28" fill="none">
+          <!-- pixel person left -->
+          <rect x="11" y="2" width="6" height="6" fill="#f0c030"/>
+          <rect x="9" y="9" width="10" height="8" fill="#f0c030"/>
+          <rect x="7" y="17" width="5" height="8" fill="#f0c030"/>
+          <rect x="16" y="17" width="5" height="8" fill="#f0c030"/>
+        </svg>
+      </div>
+      <div class="intro-icon-line"></div>
+      <div class="intro-icon">
+        <svg viewBox="0 0 28 28" fill="none">
+          <!-- pixel person right (slightly different = destination) -->
+          <rect x="11" y="2" width="6" height="6" fill="#e84040"/>
+          <rect x="9" y="9" width="10" height="8" fill="#e84040"/>
+          <rect x="7" y="17" width="5" height="8" fill="#e84040"/>
+          <rect x="16" y="17" width="5" height="8" fill="#e84040"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Status messages -->
+    <div class="intro-status-block">
+      <div class="intro-status-line" id="intro-s1">SEARCHING<span class="intro-blink">...</span></div>
+      <div class="intro-status-line dim" id="intro-s2"></div>
+    </div>
+
+    <!-- Progress -->
+    <div class="intro-progress-wrap">
+      <div class="intro-progress-track">
+        <div class="intro-progress-fill" id="intro-pfill"></div>
+      </div>
+      <div class="intro-progress-pct" id="intro-ppct">0%</div>
+    </div>
+  </div>
+
+  <!-- Skip -->
+  <button class="intro-skip" id="intro-skip-btn">[ SKIP ]</button>
+</div>
+  `;
+
+  /* ─────────────────────────────────────
+     INJECT
+  ───────────────────────────────────── */
+  const styleEl = document.createElement('style');
+  styleEl.textContent = css;
+  document.head.appendChild(styleEl);
+
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = html;
+  document.body.appendChild(wrapper.firstElementChild);
+
+  /* ─────────────────────────────────────
+     CANVAS  — particle / noise BG
+  ───────────────────────────────────── */
+  const canvas = document.getElementById('intro-canvas');
+  const ctx    = canvas.getContext('2d');
+  let cw, ch;
+
+  function resizeCanvas () {
+    cw = canvas.width  = window.innerWidth;
+    ch = canvas.height = window.innerHeight;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  /* Particles */
+  const PARTICLES = 120;
+  const particles = Array.from({ length: PARTICLES }, () => ({
+    x: Math.random() * window.innerWidth,
+    y: Math.random() * window.innerHeight,
+    vx: (Math.random() - 0.5) * 0.4,
+    vy: (Math.random() - 0.5) * 0.4,
+    r:  Math.random() * 1.5 + 0.3,
+    a:  Math.random(),
+    col: Math.random() > 0.5 ? '#00ffc8' : '#e84040',
+  }));
+
+  /* Glitch slices */
+  let glitchTimer = 0;
+  const glitchSlices = [];
+
+  function spawnGlitch () {
+    const n = 3 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < n; i++) {
+      glitchSlices.push({
+        y:    Math.random() * ch,
+        h:    2 + Math.random() * 14,
+        dx:   (Math.random() - 0.5) * 40,
+        life: 4 + Math.floor(Math.random() * 8),
+        col:  Math.random() > 0.5 ? 'rgba(0,255,200,0.06)' : 'rgba(232,64,64,0.07)',
+      });
+    }
+    /* flash overlay */
+    const gf = document.getElementById('intro-gf');
+    if (gf) {
+      gf.classList.remove('fire');
+      void gf.offsetWidth;
+      gf.classList.add('fire');
+    }
+  }
+
+  let frameId;
+  function draw () {
+    frameId = requestAnimationFrame(draw);
+    ctx.clearRect(0, 0, cw, ch);
+
+    /* deep bg gradient (cyan-purple like screenshot) */
+    const grad = ctx.createRadialGradient(cw*0.5, ch*0.45, 0, cw*0.5, ch*0.45, cw*0.7);
+    grad.addColorStop(0, 'rgba(0,40,60,0.55)');
+    grad.addColorStop(0.5, 'rgba(20,0,50,0.4)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cw, ch);
+
+    /* particles */
+    particles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < 0) p.x = cw;
+      if (p.x > cw) p.x = 0;
+      if (p.y < 0) p.y = ch;
+      if (p.y > ch) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.col;
+      ctx.globalAlpha = 0.18 + Math.sin(Date.now() * 0.002 + p.a * 10) * 0.12;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+
+    /* glitch slices */
+    glitchTimer++;
+    if (glitchTimer > 60 + Math.random() * 80) {
+      glitchTimer = 0;
+      spawnGlitch();
+    }
+    for (let i = glitchSlices.length - 1; i >= 0; i--) {
+      const s = glitchSlices[i];
+      ctx.fillStyle = s.col;
+      ctx.fillRect(s.dx, s.y, cw + Math.abs(s.dx) * 2, s.h);
+      s.life--;
+      if (s.life <= 0) glitchSlices.splice(i, 1);
+    }
+
+    /* horizontal scan shimmer */
+    const scanY = (Date.now() * 0.05) % ch;
+    const sg = ctx.createLinearGradient(0, scanY - 40, 0, scanY + 40);
+    sg.addColorStop(0, 'rgba(0,255,200,0)');
+    sg.addColorStop(0.5, 'rgba(0,255,200,0.025)');
+    sg.addColorStop(1, 'rgba(0,255,200,0)');
+    ctx.fillStyle = sg;
+    ctx.fillRect(0, scanY - 40, cw, 80);
+  }
+  draw();
+
+  /* ─────────────────────────────────────
+     PROGRESS & STATUS MESSAGES
+  ───────────────────────────────────── */
+  const msgs = [
+    { at: 0,    s1: 'SEARCHING...',                            s2: '' },
+    { at: 15,   s1: 'MOLECULAR DISASSEMBLY COMPLETE',          s2: 'TRANSFER TO DESTINATION IN PROGRESS...' },
+    { at: 38,   s1: 'INITIALIZING FILM DATABASE',              s2: 'CONNECTING TO TMDB / IMDB NODES...' },
+    { at: 55,   s1: 'LOADING CINEMATIC INDEX',                 s2: 'PARSING 10,000+ TITLES...' },
+    { at: 72,   s1: 'CALIBRATING RECOMMENDATION ENGINE',       s2: 'SYNCHRONIZING USER PREFERENCES...' },
+    { at: 88,   s1: 'SYSTEM READY',                            s2: 'WELCOME, RUNNER.' },
+    { at: 98,   s1: 'ENTER THE ARCHIVE',                       s2: '' },
+  ];
+
+  const pfill = document.getElementById('intro-pfill');
+  const ppct  = document.getElementById('intro-ppct');
+  const s1El  = document.getElementById('intro-s1');
+  const s2El  = document.getElementById('intro-s2');
+
+  let pct      = 0;
+  let msgIdx   = 0;
+  let startTime = null;
+
+  /* ── AUDIO ── */
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  /* typewriter helper */
+  function typewrite (el, text, speed = 28) {
+    el.innerHTML = '';
+    let i = 0;
+    const iv = setInterval(() => {
+      if (i < text.length) {
+        el.innerHTML = text.slice(0, ++i) + (i < text.length ? '<span class="intro-blink">_</span>' : '');
+      } else {
+        clearInterval(iv);
+      }
+    }, speed);
+  }
+
+  function startIntroAudio() {
+  const now = audioCtx.currentTime;
+  const master = audioCtx.createGain();
+  master.gain.setValueAtTime(0, now);
+  master.gain.linearRampToValueAtTime(0.5, now + 0.8);
+  master.connect(audioCtx.destination);
+
+  // Reverb convolver
+  const revBuf = audioCtx.createBuffer(2, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = revBuf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/d.length, 2);
+  }
+  const rev = audioCtx.createConvolver();
+  rev.buffer = revBuf;
+  const revGain = audioCtx.createGain();
+  revGain.gain.value = 0.4;
+  rev.connect(revGain); revGain.connect(master);
+
+  // Deep space drone
+  [40, 80, 120].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const g   = audioCtx.createGain();
+    const lfo = audioCtx.createOscillator();
+    const lfoG = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.value = freq;
+    osc.detune.value = i * 12;
+    lfo.frequency.value = 0.3 + i * 0.1;
+    lfoG.gain.value = 3;
+    lfo.connect(lfoG); lfoG.connect(osc.detune);
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(0.12 - i*0.03, now + 1.5);
+    osc.connect(g); g.connect(master); g.connect(rev);
+    lfo.start(now); osc.start(now); osc.stop(now + 7);
+  });
+
+  // Metallic transmission ping
+  [0.2, 1.1, 2.3, 3.8].forEach((t, i) => {
+    const osc  = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+    const g    = audioCtx.createGain();
+    const filt = audioCtx.createBiquadFilter();
+    osc.type  = 'sine';
+    osc2.type = 'sine';
+    const base = 1200 + i * 400;
+    osc.frequency.setValueAtTime(base, now + t);
+    osc.frequency.exponentialRampToValueAtTime(base * 0.5, now + t + 0.6);
+    osc2.frequency.setValueAtTime(base * 1.5, now + t);
+    osc2.frequency.exponentialRampToValueAtTime(base * 0.7, now + t + 0.4);
+    filt.type = 'bandpass'; filt.frequency.value = base; filt.Q.value = 8;
+    g.gain.setValueAtTime(0.35, now + t);
+    g.gain.exponentialRampToValueAtTime(0.001, now + t + 0.7);
+    osc.connect(filt); osc2.connect(filt);
+    filt.connect(g); g.connect(master); g.connect(rev);
+    osc.start(now + t); osc.stop(now + t + 0.8);
+    osc2.start(now + t); osc2.stop(now + t + 0.8);
+  });
+
+  // Laser sweep (sci-fi whoosh)
+  [0.5, 2.8].forEach((t) => {
+    const osc  = audioCtx.createOscillator();
+    const g    = audioCtx.createGain();
+    const filt = audioCtx.createBiquadFilter();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(80, now + t);
+    osc.frequency.exponentialRampToValueAtTime(3200, now + t + 0.35);
+    filt.type = 'bandpass'; filt.frequency.value = 800; filt.Q.value = 2;
+    g.gain.setValueAtTime(0.3, now + t);
+    g.gain.exponentialRampToValueAtTime(0.001, now + t + 0.4);
+    osc.connect(filt); filt.connect(g);
+    g.connect(master); g.connect(rev);
+    osc.start(now + t); osc.stop(now + t + 0.5);
+  });
+
+  // Static noise burst (transmission feel)
+  [0.15, 1.05, 2.25].forEach((t) => {
+    const buf  = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.08, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random()*2-1);
+    const src  = audioCtx.createBufferSource();
+    const filt = audioCtx.createBiquadFilter();
+    const g    = audioCtx.createGain();
+    src.buffer = buf;
+    filt.type = 'highpass'; filt.frequency.value = 3000;
+    g.gain.setValueAtTime(0.18, now + t);
+    g.gain.exponentialRampToValueAtTime(0.001, now + t + 0.1);
+    src.connect(filt); filt.connect(g); g.connect(master);
+    src.start(now + t);
+  });
+
+  // Fade out toàn bộ trước khi kết thúc
+  master.gain.setValueAtTime(0.5, now + 5);
+  master.gain.linearRampToValueAtTime(0, now + 6.5);
+}
+
+  function updateProgress (ts) {
+    if (!startTime) {
+      startTime = ts;
+      startIntroAudio();   // ← thêm dòng này
+    }
+    const elapsed = ts - startTime;
+    pct = Math.min(100, (elapsed / TOTAL_MS) * 100);
+
+    pfill.style.width  = pct + '%';
+    ppct.textContent   = Math.floor(pct) + '%';
+
+    /* update messages */
+    const next = msgs[msgIdx + 1];
+    if (next && pct >= next.at) {
+      msgIdx++;
+      typewrite(s1El, msgs[msgIdx].s1, 22);
+      if (msgs[msgIdx].s2) {
+        setTimeout(() => typewrite(s2El, msgs[msgIdx].s2, 18), 300);
+      } else {
+        s2El.innerHTML = '';
+      }
+    }
+
+    if (pct < 100) {
+      requestAnimationFrame(updateProgress);
+    } else {
+      setTimeout(exitIntro, 400);
+    }
+  }
+  requestAnimationFrame(updateProgress);
+
+  /* ─────────────────────────────────────
+     EXIT
+  ───────────────────────────────────── */
+  function exitIntro () {
+    sessionStorage.setItem(SESSION_KEY, '1');
+    const el = document.getElementById('imdb-intro');
+    if (!el) return;
+    el.classList.add('intro-exit');
+    cancelAnimationFrame(frameId);
+    setTimeout(() => {
+      el.remove();
+      styleEl.remove();
+    }, 700);
+  }
+
+  /* Skip button */
+  document.getElementById('intro-skip-btn')?.addEventListener('click', () => {
+    pct = 100;
+    pfill.style.width = '100%';
+    ppct.textContent  = '100%';
+    exitIntro();
+  });
+
+  /* Also allow pressing any key to skip */
+  const onKey = () => exitIntro();
+  window.addEventListener('keydown', onKey, { once: true });
+
+})();
