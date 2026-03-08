@@ -1240,6 +1240,11 @@ function renderDetailBody(body, m, d) {
   const btnVS = el('button', 'btn-vietsub-find', '🎬 Tìm Vietsub');
   btnVS.addEventListener('click', () => toggleVietsubPanel(m, left, right, btnVS));
   left.appendChild(btnVS);
+  
+  const btnReview = el('button', 'btn-vietsub-find', '📰 Bài đánh giá');
+  btnReview.style.cssText = 'margin-top:8px;background:#1a1a2e;border-color:#f5c51844;color:#f5c518;';
+  btnReview.addEventListener('click', () => openNewspaperArticle(m));
+  left.appendChild(btnReview);
 
   // Trailer
   if (d.trailerKey) {
@@ -3150,6 +3155,7 @@ function exportData(type) {
 ══════════════════════════════════════════════════════════════ */
 
 function switchTab(tab) {
+  if (STATE.tab === 'museum' && tab !== 'museum') destroyMuseum();
   STATE.tab = tab;
   // Update tab buttons
   document.querySelectorAll('.tab-btn').forEach(b => {
@@ -3158,7 +3164,7 @@ function switchTab(tab) {
 
   // Show/hide panels
   const grid = $('movie-grid');
-  ['tab-cinema','tab-onthisday','tab-bracket','tab-newspaper','tab-screening', 'tab-livefeed'].forEach(id => $(`${id}`)?.classList.add('hidden'));
+  ['tab-cinema','tab-onthisday','tab-bracket','tab-newspaper','tab-screening', 'tab-livefeed', 'tab-radar', 'tab-museum'].forEach(id => $(`${id}`)?.classList.add('hidden'));
   grid.style.display = '';
 
   // Filter panel
@@ -3200,6 +3206,16 @@ function switchTab(tab) {
     grid.style.display = 'none';
     $('tab-livefeed').classList.remove('hidden');
     loadLiveFeed();
+  } else if (tab === 'radar') {
+    fp.style.display = 'none';
+    grid.style.display = 'none';
+    $('tab-radar').classList.remove('hidden');
+    loadReleaseRadar();
+  } else if (tab === 'museum') {
+    fp.style.display = 'none';
+    grid.style.display = 'none';
+    $('tab-museum').classList.remove('hidden');
+    loadFilmMuseum();
   }
 }
 
@@ -4763,6 +4779,7 @@ function init() {
   setupSearch();
   bindEvents();
   setupInfiniteScroll();
+  loadLiveFeed();
 
   // Apply collapsed state
   if (STATE.filterCollapsed) {
@@ -5157,11 +5174,14 @@ async function loadScreeningRoom() {
   if (!root) return;
 
   // Kiểm tra cache còn hợp lệ không (đúng tuần)
+  // Thay toàn bộ hàm getWeekKey ở mọi chỗ bằng:
   const getWeekKey = () => {
     const d = new Date();
-    const jan1 = new Date(d.getFullYear(), 0, 1);
-    const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
-    return `${d.getFullYear()}-W${week}`;
+    const dow = d.getDay(); // 0=Sun
+    const diffToMon = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(d);
+    monday.setDate(d.getDate() + diffToMon);
+    return `${monday.getFullYear()}-${monday.getMonth()+1}-${monday.getDate()}`;
   };
   const weekKey = getWeekKey();
 
@@ -5239,11 +5259,14 @@ function renderScreeningRoom(root, weekData, today) {
     return `${mon.getDate()}/${mon.getMonth()+1} — ${sun.getDate()}/${sun.getMonth()+1}/${sun.getFullYear()}`;
   })();
 
+  // Thay toàn bộ hàm getWeekKey ở mọi chỗ bằng:
   const getWeekKey = () => {
     const d = new Date();
-    const jan1 = new Date(d.getFullYear(), 0, 1);
-    const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
-    return `${d.getFullYear()}-W${week}`;
+    const dow = d.getDay(); // 0=Sun
+    const diffToMon = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(d);
+    monday.setDate(d.getDate() + diffToMon);
+    return `${monday.getFullYear()}-${monday.getMonth()+1}-${monday.getDate()}`;
   };
   const weekKey = getWeekKey();
   if (STATE._srRerollWeek !== weekKey) STATE._srRerollCount = 0;
@@ -5420,11 +5443,14 @@ function renderScreeningRoom(root, weekData, today) {
   root.querySelector('#sr-refresh-btn')?.addEventListener('click', async () => {
     const MAX_REROLL = 3;
 
+    // Thay toàn bộ hàm getWeekKey ở mọi chỗ bằng:
     const getWeekKey = () => {
       const d = new Date();
-      const jan1 = new Date(d.getFullYear(), 0, 1);
-      const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
-      return `${d.getFullYear()}-W${week}`;
+      const dow = d.getDay(); // 0=Sun
+      const diffToMon = dow === 0 ? -6 : 1 - dow;
+      const monday = new Date(d);
+      monday.setDate(d.getDate() + diffToMon);
+      return `${monday.getFullYear()}-${monday.getMonth()+1}-${monday.getDate()}`;
     };
 
     const weekKey = getWeekKey();
@@ -5489,6 +5515,7 @@ async function loadScreeningRoomWithOffset(offset) {
     movie: w.movie,
     date: w.date.toISOString(),
   }))};
+  STATE._srRerollWeek = weekKey;
   saveConfig();
 
   renderScreeningRoom(root, ordered, today);
@@ -5541,6 +5568,9 @@ const FEED_STATE = {
   nextRefresh: null,
   refreshCountdown: 3600,
   prevRankings: {},  // để tính tăng/giảm
+  alerts: [],          // ← THÊM: lịch sử alerts
+  alertsSeen: 0,       // ← THÊM: số đã đọc
+  prevPopularity: {},
 };
 
 async function loadLiveFeed() {
@@ -5689,7 +5719,7 @@ async function refreshFeedData(root) {
     const globalTrend = await tmdb('/trending/movie/day');
     FEED_STATE.globalTrending = (globalTrend.results || []).slice(0, 20).map(r => normalizeMovie(r, 'movie'));
   } catch(e) { FEED_STATE.globalTrending = []; }
-
+  detectViralSpikes();
   renderLiveFeed(root);
 }
 
@@ -5708,6 +5738,9 @@ function renderLiveFeed(root) {
     </div>
     <div class="lf-topbar-right">
       <span class="lf-refresh-info">🔄 Refresh sau: <strong id="lf-countdown">${formatCountdown(FEED_STATE.refreshCountdown)}</strong></span>
+      <button class="lf-bell-btn" id="lf-bell-btn" onclick="toggleAlertsDrawer()">
+        🔔 <span class="lf-bell-badge" id="lf-bell-badge" style="display:none">0</span>
+      </button>
       <button class="lf-manual-refresh" id="lf-manual-refresh">⚡ Refresh ngay</button>
     </div>`;
   root.appendChild(topbar);
@@ -5733,6 +5766,7 @@ function renderLiveFeed(root) {
   main.appendChild(detail);
 
   root.appendChild(main);
+  root.appendChild(buildAlertsDrawer());
 
   // ── BOTTOM: Global Charts ──
   const charts = buildGlobalCharts();
@@ -9202,3 +9236,1385 @@ async function initFilmMusic(body, movie, detail) {
   window.addEventListener('keydown', onKey, { once: true });
 
 })();
+
+
+function detectViralSpikes() {
+  const now = Date.now();
+  FEED_REGIONS.forEach(r => {
+    const movies = FEED_STATE.data[r.code]?.movies || [];
+    movies.forEach(m => {
+      const id = m.tmdb_id;
+      const prev = FEED_STATE.prevPopularity[id];
+      const curr = parseFloat(m.popularity || m.rating) || 0;
+      if (prev && curr > 0) {
+        const delta = curr - prev;
+        // Spike: tăng hơn 20% hoặc nhảy vào top 3
+        const isTop3Now  = movies.indexOf(m) < 3;
+        const wasntTop3  = true; // simplified — refine nếu cần
+        if (delta > 0.5 || (isTop3Now && wasntTop3)) {
+          const alert = {
+            id: `${id}_${now}`,
+            movie: m,
+            region: r,
+            delta: delta.toFixed(1),
+            reason: delta > 1.5 ? '🚀 Tăng đột biến' : isTop3Now ? '🔥 Vào Top 3' : '📈 Đang lên',
+            time: new Date().toLocaleTimeString('vi-VN'),
+            seen: false,
+          };
+          FEED_STATE.alerts.unshift(alert);
+          showAlertToast(alert);
+        }
+      }
+      FEED_STATE.prevPopularity[id] = curr;
+    });
+  });
+  // Giữ tối đa 50 alerts
+  FEED_STATE.alerts = FEED_STATE.alerts.slice(0, 50);
+  updateBellBadge();
+}
+
+function showAlertToast(alert) {
+  if (!document.getElementById('feed-root')) return; // chỉ show khi đang ở tab feed
+  const m = alert.movie;
+  const toast = document.createElement('div');
+  toast.className = 'lf-alert-toast';
+  toast.innerHTML = `
+    <div class="lf-toast-poster">
+      ${m.poster ? `<img src="${m.poster}"/>` : '🎬'}
+    </div>
+    <div class="lf-toast-body">
+      <div class="lf-toast-reason">${alert.reason} · ${alert.region.flag} ${alert.region.name}</div>
+      <div class="lf-toast-title">${m.title}</div>
+      <div class="lf-toast-meta">⭐ ${m.rating} · ${(m.genre||'').split(',')[0]}</div>
+    </div>`;
+  toast.addEventListener('click', () => { showDetailPage(m); toast.remove(); });
+  document.body.appendChild(toast);
+  setTimeout(() => toast.classList.add('lf-toast-visible'), 50);
+  setTimeout(() => { toast.classList.remove('lf-toast-visible'); setTimeout(() => toast.remove(), 400); }, 5000);
+}
+
+function buildAlertsDrawer() {
+  const drawer = document.createElement('div');
+  drawer.id = 'lf-alerts-drawer';
+  drawer.className = 'lf-alerts-drawer lf-drawer-hidden';
+  drawer.innerHTML = `
+    <div class="lf-drawer-hdr">
+      <span>🔔 Trending Alerts</span>
+      <button onclick="toggleAlertsDrawer()">✕</button>
+    </div>
+    <div class="lf-drawer-list" id="lf-drawer-list"></div>`;
+  return drawer;
+}
+
+function toggleAlertsDrawer() {
+  const drawer = document.getElementById('lf-alerts-drawer');
+  if (!drawer) return;
+  const isOpen = !drawer.classList.contains('lf-drawer-hidden');
+  if (isOpen) {
+    drawer.classList.add('lf-drawer-hidden');
+  } else {
+    drawer.classList.remove('lf-drawer-hidden');
+    // Mark all seen
+    FEED_STATE.alertsSeen = FEED_STATE.alerts.length;
+    updateBellBadge();
+    // Render list
+    const list = document.getElementById('lf-drawer-list');
+    if (!list) return;
+    list.innerHTML = FEED_STATE.alerts.length ? FEED_STATE.alerts.map(a => `
+      <div class="lf-drawer-item" onclick="showDetailPage(${JSON.stringify(a.movie).replace(/"/g,'&quot;')})">
+        <div class="lf-drawer-poster">
+          ${a.movie.poster ? `<img src="${a.movie.poster}"/>` : '🎬'}
+        </div>
+        <div class="lf-drawer-info">
+          <div class="lf-drawer-reason">${a.reason} · ${a.region.flag} ${a.region.name}</div>
+          <div class="lf-drawer-title">${a.movie.title}</div>
+          <div class="lf-drawer-time">${a.time}</div>
+        </div>
+      </div>`).join('')
+    : '<div class="lf-drawer-empty">Chưa có alerts. Refresh feed để bắt đầu theo dõi.</div>';
+  }
+}
+
+function updateBellBadge() {
+  const badge = document.getElementById('lf-bell-badge');
+  if (!badge) return;
+  const unseen = FEED_STATE.alerts.length - FEED_STATE.alertsSeen;
+  badge.textContent = unseen;
+  badge.style.display = unseen > 0 ? 'inline-block' : 'none';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SECTION 30 — RELEASE RADAR
+   Lịch phim sắp ra + countdown + genre filter + watchlist + trailer
+══════════════════════════════════════════════════════════════ */
+
+const RR_GENRES = [
+  { id: '', name: 'Tất cả' },
+  { id: '28', name: 'Action' },
+  { id: '12', name: 'Adventure' },
+  { id: '16', name: 'Animation' },
+  { id: '35', name: 'Comedy' },
+  { id: '80', name: 'Crime' },
+  { id: '18', name: 'Drama' },
+  { id: '14', name: 'Fantasy' },
+  { id: '27', name: 'Horror' },
+  { id: '9648', name: 'Mystery' },
+  { id: '10749', name: 'Romance' },
+  { id: '878', name: 'Sci-Fi' },
+  { id: '53', name: 'Thriller' },
+];
+
+const RR_STATE = {
+  movies: [],
+  genre: '',
+  loading: false,
+};
+
+async function loadReleaseRadar() {
+  const root = $('radar-root');
+  if (!root) return;
+  if (RR_STATE.loading) return;
+
+  root.innerHTML = '';
+  const wrap = el('div', 'rr-wrap');
+
+  // Header
+  const hdr = el('div', 'rr-header');
+  hdr.innerHTML = `
+    <div>
+      <div class="rr-title">📅 Release Radar</div>
+      <div class="rr-subtitle">Phim sắp ra mắt — cập nhật từ TMDB</div>
+    </div>`;
+  wrap.appendChild(hdr);
+
+  // Genre pills
+  const genreBar = el('div', 'rr-genres');
+  RR_GENRES.forEach(g => {
+    const pill = el('button', `rr-genre-pill${RR_STATE.genre === g.id ? ' active' : ''}`, g.name);
+    pill.addEventListener('click', () => {
+      RR_STATE.genre = g.id;
+      loadReleaseRadar();
+    });
+    genreBar.appendChild(pill);
+  });
+  wrap.appendChild(genreBar);
+
+  // Content area
+  const content = el('div', 'rr-content');
+  wrap.appendChild(content);
+  root.appendChild(wrap);
+
+  if (!STATE.tmdbKey) {
+    content.innerHTML = `<div class="rr-empty">🔑 Cần TMDB Key để dùng Release Radar<br><br>
+      <button onclick="openTmdbModal()" style="background:#f5c518;color:#000;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;">Nhập TMDB Key</button>
+    </div>`;
+    return;
+  }
+
+  // Loading
+  content.innerHTML = `<div class="rr-loading"><div class="rr-loading-spinner">🎬</div><br>Đang tải lịch phim...</div>`;
+
+  RR_STATE.loading = true;
+  try {
+    await fetchUpcomingMovies();
+  } finally {
+    RR_STATE.loading = false;
+  }
+
+  renderRadarContent(content);
+}
+
+async function fetchUpcomingMovies() {
+  const today = new Date();
+  const future = new Date();
+  future.setMonth(future.getMonth() + 4);
+
+  const fmt = d => d.toISOString().split('T')[0];
+
+  const params = {
+    sort_by: 'primary_release_date.asc',
+    'primary_release_date.gte': fmt(today),
+    'primary_release_date.lte': fmt(future),
+    'vote_count.gte': 0,
+    page: 1,
+  };
+  if (RR_STATE.genre) params['with_genres'] = RR_STATE.genre;
+
+  const [p1, p2, p3] = await Promise.all([
+    tmdb('/discover/movie', { ...params, page: 1 }).catch(() => ({ results: [] })),
+    tmdb('/discover/movie', { ...params, page: 2 }).catch(() => ({ results: [] })),
+    tmdb('/discover/movie', { ...params, page: 3 }).catch(() => ({ results: [] })),
+  ]);
+
+  const all = [
+    ...(p1.results || []),
+    ...(p2.results || []),
+    ...(p3.results || []),
+  ];
+
+  RR_STATE.movies = all
+    .filter(m => m.release_date)
+    .sort((a, b) => new Date(a.release_date) - new Date(b.release_date))
+    .map(m => normalizeMovie(m, 'movie'));
+}
+
+function renderRadarContent(content) {
+  content.innerHTML = '';
+
+  if (!RR_STATE.movies.length) {
+    content.innerHTML = '<div class="rr-empty">Không tìm thấy phim sắp ra mắt.</div>';
+    return;
+  }
+
+  // Group by month
+  const byMonth = {};
+  RR_STATE.movies.forEach(m => {
+    const d = new Date(m.release_date || m.year);
+    if (isNaN(d)) return;
+    const key = d.toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' });
+    if (!byMonth[key]) byMonth[key] = [];
+    byMonth[key].push(m);
+  });
+
+  Object.entries(byMonth).forEach(([month, movies]) => {
+    const sec = el('div', 'rr-month');
+    sec.innerHTML = `<div class="rr-month-label">${month}</div>`;
+    const grid = el('div', 'rr-grid');
+
+    movies.forEach(m => {
+      grid.appendChild(buildRadarCard(m));
+    });
+
+    sec.appendChild(grid);
+    content.appendChild(sec);
+  });
+}
+
+function buildRadarCard(movie) {
+  const card = el('div', 'rr-card');
+
+  // Countdown
+  const releaseDate = new Date(movie.release_date || movie.year + '-01-01');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diff = Math.ceil((releaseDate - today) / 86400000);
+  let countdownText = '';
+  let countdownClass = 'rr-countdown';
+  if (diff <= 0) {
+    countdownText = '🎬 Đang chiếu';
+    countdownClass += ' today';
+  } else if (diff === 1) {
+    countdownText = '⚡ Ngày mai';
+    countdownClass += ' today';
+  } else if (diff <= 7) {
+    countdownText = `🔥 Còn ${diff} ngày`;
+    countdownClass += ' soon';
+  } else {
+    countdownText = `📅 Còn ${diff} ngày`;
+  }
+
+  // Poster
+  const posterWrap = el('div', 'rr-card-poster');
+  if (movie.poster) {
+    posterWrap.innerHTML = `<img src="${movie.poster}" loading="lazy" alt="${movie.title}"/>`;
+  } else {
+    posterWrap.innerHTML = `<div class="rr-no-poster">🎬</div>`;
+  }
+
+  // Countdown badge
+  const badge = el('div', countdownClass, countdownText);
+  posterWrap.appendChild(badge);
+
+  // Trailer overlay
+  const overlay = el('div', 'rr-trailer-overlay');
+  overlay.innerHTML = `<div class="rr-play-btn">▶</div>`;
+  overlay.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    await openRadarTrailer(movie);
+  });
+  posterWrap.appendChild(overlay);
+  card.appendChild(posterWrap);
+
+  // Info
+  const info = el('div', 'rr-card-info');
+  const dateStr = releaseDate.toLocaleDateString('vi-VN', { day: 'numeric', month: 'short', year: 'numeric' });
+  info.innerHTML = `
+    <div class="rr-card-title">${movie.title}</div>
+    <div class="rr-card-meta">
+      <span class="rr-card-date">🗓 ${dateStr}</span>
+      ${movie.genre ? `<span class="rr-card-genre">${movie.genre.split(',')[0].trim()}</span>` : ''}
+      ${movie.rating && movie.rating !== '0.0' ? `<span>⭐ ${movie.rating}</span>` : ''}
+    </div>`;
+
+  // Watchlist button
+  const inWl = !!STATE.watchlist[movie.tmdb_id || movie.title];
+  const wlBtn = el('button', `rr-wl-btn${inWl ? ' in-wl' : ''}`,
+    inWl ? '✓ Trong Watchlist' : '+ Thêm vào Watchlist');
+  wlBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleWatchlist(movie.tmdb_id || movie.title, movie, null);
+    const nowIn = !!STATE.watchlist[movie.tmdb_id || movie.title];
+    wlBtn.textContent = nowIn ? '✓ Trong Watchlist' : '+ Thêm vào Watchlist';
+    wlBtn.classList.toggle('in-wl', nowIn);
+  });
+  info.appendChild(wlBtn);
+  card.appendChild(info);
+
+  // Click → detail page
+  card.addEventListener('click', () => showDetailPage(movie));
+
+  return card;
+}
+
+async function openRadarTrailer(movie) {
+  if (!STATE.tmdbKey || !movie.tmdb_id) return;
+
+  let key = null;
+  try {
+    const data = await tmdb(`/${movie.mediaType || 'movie'}/${movie.tmdb_id}/videos`);
+    const list = (data.results || []).filter(v => v.site === 'YouTube');
+    const t = list.find(v => v.type === 'Trailer') || list[0];
+    key = t?.key || null;
+  } catch(e) {}
+
+  if (!key) { showToast('Chưa có trailer cho phim này', 'info', '🎬'); return; }
+
+  const modal = el('div', 'rr-trailer-modal');
+  modal.innerHTML = `
+    <iframe src="https://www.youtube.com/embed/${key}?autoplay=1&rel=0"
+      allow="autoplay; encrypted-media" allowfullscreen></iframe>
+    <button class="rr-trailer-close">✕ Đóng</button>`;
+  modal.querySelector('.rr-trailer-close').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   🏛️  SECTION 31 — FILM MUSEUM
+   Bảo Tàng Điện Ảnh Ảo — mỗi phòng là 1 thập kỷ
+   Paste toàn bộ block này vào CUỐI app.js
+══════════════════════════════════════════════════════════════ */
+
+const MUSEUM_DECADES = [
+  {
+    id: 'd1920', decade: '1920s', label: 'Kỷ Nguyên Phim Câm',
+    years: [1920, 1929], icon: '🎞️',
+    palette: { wall: '#1a0e05', accent: '#c8943a', text: '#f0d08a', glow: '#c8943a' },
+    tagline: 'Nghệ thuật thuần hình ảnh — không lời, không tiếng',
+    desc: 'Trước khi âm thanh tồn tại, điện ảnh đã là ngôn ngữ toàn cầu. Chaplin, Keaton và Murnau dạy thế giới cách kể chuyện chỉ bằng ánh sáng và chuyển động.',
+    facts: ['The Jazz Singer (1927) — âm thanh đồng bộ đầu tiên', 'Metropolis (1927) — sci-fi đầu tiên của điện ảnh', 'Charlie Chaplin thống trị toàn thế giới', 'Hollywood vượt qua New York trở thành trung tâm phim'],
+    movements: ['Chủ nghĩa Biểu hiện Đức', 'Soviet Montage', 'Slapstick Comedy Mỹ'],
+    directors: ['Charlie Chaplin', 'F.W. Murnau', 'Sergei Eisenstein', 'Buster Keaton'],
+    tmdbParams: { 'primary_release_date.gte': '1920-01-01', 'primary_release_date.lte': '1929-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 30 },
+  },
+  {
+    id: 'd1930', decade: '1930s', label: 'Thời Đại Vàng Son',
+    years: [1930, 1939], icon: '🌟',
+    palette: { wall: '#0d0800', accent: '#d4a017', text: '#f5e070', glow: '#f5c030' },
+    tagline: 'Studio lớn, ngôi sao lớn, giấc mơ lớn',
+    desc: 'Hệ thống studio Hollywood xây dựng "Nhà máy mơ" vĩ đại nhất lịch sử. Technicolor xuất hiện, Musical nở rộ, và Gone with the Wind định nghĩa lại quy mô điện ảnh.',
+    facts: ['Gone with the Wind (1939) — phim ăn khách nhất mọi thời (lạm phát)', 'Technicolor màu 3 dải ra đời năm 1932', 'Hệ thống 5 studio lớn kiểm soát toàn ngành', 'Hays Code kiểm duyệt nội dung từ 1934'],
+    movements: ['Musical Hollywood', 'Screwball Comedy', 'Pre-Code Cinema'],
+    directors: ['Frank Capra', 'Howard Hawks', 'John Ford', 'Ernst Lubitsch'],
+    tmdbParams: { 'primary_release_date.gte': '1930-01-01', 'primary_release_date.lte': '1939-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 50 },
+  },
+  {
+    id: 'd1940', decade: '1940s', label: 'Chiến Tranh & Film Noir',
+    years: [1940, 1949], icon: '🕵️',
+    palette: { wall: '#060810', accent: '#5a6f8a', text: '#a8c0d8', glow: '#4488bb' },
+    tagline: 'Bóng tối, bí ẩn và những tâm hồn bị tổn thương',
+    desc: 'Thế chiến II phủ bóng lên mọi thước phim. Từ đống tro tàn nảy sinh Film Noir — thể loại đen tối nhất, sắc bén nhất của Hollywood — cùng với kiệt tác Citizen Kane thay đổi mọi quy tắc.',
+    facts: ['Citizen Kane (1941) — thường được gọi là phim hay nhất mọi thời đại', 'Film Noir định hình thẩm mỹ bóng tối Hollywood', 'Casablanca (1942) — tình yêu giữa chiến tranh', 'Neo-realism Ý ra đời từ đống đổ nát hậu chiến'],
+    movements: ['Film Noir', 'Neo-realism Ý', 'Phim tuyên truyền chiến tranh'],
+    directors: ['Orson Welles', 'Billy Wilder', 'Howard Hawks', 'Roberto Rossellini'],
+    tmdbParams: { 'primary_release_date.gte': '1940-01-01', 'primary_release_date.lte': '1949-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 50 },
+  },
+  {
+    id: 'd1950', decade: '1950s', label: 'Hoàng Kim & Phản Kháng',
+    years: [1950, 1959], icon: '🎭',
+    palette: { wall: '#0a0510', accent: '#8b5cf6', text: '#c4b5fd', glow: '#7c3aed' },
+    tagline: 'TV vs rạp chiếu — cuộc chiến định hình lại điện ảnh',
+    desc: 'Truyền hình đe dọa, Hollywood phản công bằng màn hình rộng CinemaScope và 3D. Trong khi đó, Kurosawa, Bergman và Fellini tái định nghĩa điện ảnh như một nghệ thuật thực thụ.',
+    facts: ['CinemaScope và màn ảnh rộng ra đời để cạnh tranh TV', 'Kurosawa đưa điện ảnh châu Á lên đỉnh thế giới', 'Phong trào Làn sóng Mới Pháp bắt đầu hình thành', 'James Dean biểu tượng của thế hệ phản kháng'],
+    movements: ['Nouvelle Vague sơ khai', 'Điện ảnh Tác giả', 'CinemaScope & Widescreen'],
+    directors: ['Akira Kurosawa', 'Ingmar Bergman', 'Federico Fellini', 'Alfred Hitchcock'],
+    tmdbParams: { 'primary_release_date.gte': '1950-01-01', 'primary_release_date.lte': '1959-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 80 },
+  },
+  {
+    id: 'd1960', decade: '1960s', label: 'Cách Mạng Điện Ảnh',
+    years: [1960, 1969], icon: '✊',
+    palette: { wall: '#050a05', accent: '#22c55e', text: '#86efac', glow: '#16a34a' },
+    tagline: 'Làn sóng mới cuốn đi mọi quy tắc cũ',
+    desc: 'Godard, Truffaut, Antonioni phá vỡ ngữ pháp điện ảnh truyền thống. Ở Mỹ, hệ thống studio sụp đổ nhường chỗ cho New Hollywood. Điện ảnh trở thành tiếng nói của thế hệ phản văn hóa.',
+    facts: ['Breathless (1960) của Godard — phim đầu tiên dùng jump cut cố ý', 'Hệ thống kiểm duyệt Hays Code sụp đổ năm 1968', '2001: A Space Odyssey tái định nghĩa Sci-Fi', 'Sergio Leone và Spaghetti Western ở Ý'],
+    movements: ['Nouvelle Vague Pháp', 'Free Cinema Anh', 'Cinema Novo Brazil', 'New Hollywood sơ khai'],
+    directors: ['Jean-Luc Godard', 'François Truffaut', 'Michelangelo Antonioni', 'Stanley Kubrick'],
+    tmdbParams: { 'primary_release_date.gte': '1960-01-01', 'primary_release_date.lte': '1969-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 100 },
+  },
+  {
+    id: 'd1970', decade: '1970s', label: 'New Hollywood',
+    years: [1970, 1979], icon: '🔥',
+    palette: { wall: '#0d0500', accent: '#f97316', text: '#fed7aa', glow: '#ea580c' },
+    tagline: 'Những đứa con nổi loạn chiếm lĩnh Hollywood',
+    desc: 'Coppola, Scorsese, Spielberg, Lucas — thế hệ đạo diễn học từ trường phim thay đổi mọi thứ. The Godfather và Jaws tạo ra mô hình blockbuster hiện đại. Đây là thập kỷ vàng nhất của điện ảnh Mỹ.',
+    facts: ['The Godfather (1972) — phim gangster định nghĩa lại thể loại', 'Jaws (1975) — phát minh ra mô hình blockbuster summer', 'Star Wars (1977) — franchise điện ảnh đầu tiên', 'Taxi Driver, Apocalypse Now — những kiệt tác tối tăm'],
+    movements: ['New Hollywood', 'Blaxploitation', 'Grindhouse Cinema'],
+    directors: ['Francis Ford Coppola', 'Martin Scorsese', 'Steven Spielberg', 'George Lucas'],
+    tmdbParams: { 'primary_release_date.gte': '1970-01-01', 'primary_release_date.lte': '1979-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 150 },
+  },
+  {
+    id: 'd1980', decade: '1980s', label: 'Kỷ Nguyên Blockbuster',
+    years: [1980, 1989], icon: '💥',
+    palette: { wall: '#100515', accent: '#ec4899', text: '#f9a8d4', glow: '#db2777' },
+    tagline: 'Hiệu ứng đặc biệt, franchise và VHS thay đổi tất cả',
+    desc: 'Spielberg và Lucas định nghĩa lại giải trí đại chúng. VHS mang rạp chiếu vào phòng khách. Nhật Bản, Hàn Quốc bắt đầu xây dựng các nền điện ảnh độc lập đỉnh cao.',
+    facts: ['E.T. (1982) — phim gia đình lớn nhất thập kỷ', 'VHS và Betamax thay đổi cách xem phim mãi mãi', 'Tim Burton mang Gothic vào mainstream', 'Hong Kong Action Cinema nở rộ với Thành Long, Lý Liên Kiệt'],
+    movements: ['High Concept Hollywood', 'Teen Comedy', 'Action Blockbuster', 'Hong Kong Kung Fu'],
+    directors: ['Steven Spielberg', 'Tim Burton', 'James Cameron', 'John Hughes'],
+    tmdbParams: { 'primary_release_date.gte': '1980-01-01', 'primary_release_date.lte': '1989-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 200 },
+  },
+  {
+    id: 'd1990', decade: '1990s', label: 'Độc Lập & Toàn Cầu Hóa',
+    years: [1990, 1999], icon: '🌐',
+    palette: { wall: '#050d10', accent: '#06b6d4', text: '#a5f3fc', glow: '#0891b2' },
+    tagline: 'Sundance, Miramax và những giọng nói từ ngoài rìa',
+    desc: 'Tarantino, Wong Kar-wai, Park Chan-wook — những đạo diễn từ ngoài hệ thống studio tạo ra những kiệt tác không thể phân loại. Phim Indie bùng nổ. Hàn Quốc và Iran xuất hiện như cường quốc điện ảnh mới.',
+    facts: ['Pulp Fiction (1994) tái định nghĩa điện ảnh indie', 'Titanic (1997) — phim ăn khách #1 khi đó', 'Phong trào Dogme 95 tại Đan Mạch', 'Matrix (1999) thay đổi visual effects mãi mãi'],
+    movements: ['American Independent Cinema', 'Làn sóng Hàn Quốc (Hallyu sơ khai)', 'Dogme 95', 'CGI Revolution'],
+    directors: ['Quentin Tarantino', 'Wong Kar-wai', 'David Fincher', 'Lars von Trier'],
+    tmdbParams: { 'primary_release_date.gte': '1990-01-01', 'primary_release_date.lte': '1999-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 300 },
+  },
+  {
+    id: 'd2000', decade: '2000s', label: 'Kỹ Thuật Số & Siêu Anh Hùng',
+    years: [2000, 2009], icon: '🦸',
+    palette: { wall: '#0a0a14', accent: '#6366f1', text: '#c7d2fe', glow: '#4f46e5' },
+    tagline: 'CGI toàn trị — Lord of the Rings đến Marvel',
+    desc: 'Peter Jackson chứng minh CGI có thể tạo ra thế giới hoàn chỉnh. Marvel bắt đầu kế hoạch chinh phục thế giới. Trong khi đó, Nolan, Villeneuve và von Trier tiếp tục thách thức giới hạn.',
+    facts: ['Lord of the Rings — kỳ công làm phim ngoại cảnh vĩ đại nhất', 'Iron Man (2008) — khởi đầu MCU', 'Brokeback Mountain phá vỡ taboo trên màn ảnh lớn', 'The Dark Knight (2008) — siêu anh hùng trưởng thành'],
+    movements: ['Superhero Cinema', 'Franchise Universe', 'Found Footage Horror'],
+    directors: ['Christopher Nolan', 'Peter Jackson', 'Paul Thomas Anderson', 'Alfonso Cuarón'],
+    tmdbParams: { 'primary_release_date.gte': '2000-01-01', 'primary_release_date.lte': '2009-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 500 },
+  },
+  {
+    id: 'd2010', decade: '2010s', label: 'Streaming & Đa Dạng Hóa',
+    years: [2010, 2019], icon: '📱',
+    palette: { wall: '#050a0a', accent: '#14b8a6', text: '#99f6e4', glow: '#0d9488' },
+    tagline: 'Netflix thay đổi tất cả — thế giới điện ảnh không biên giới',
+    desc: 'Streaming phá vỡ mô hình rạp chiếu truyền thống. Hallyu Hàn Quốc bùng nổ toàn cầu. Parasite giành Oscar phim hay nhất — lần đầu tiên trong lịch sử không phải phim tiếng Anh.',
+    facts: ['Parasite (2019) — Palme d\'Or + Oscar đầu tiên không phải tiếng Anh', 'Netflix chi 17 tỷ USD cho nội dung năm 2019', 'MeToo movement thay đổi Hollywood', 'Avengers: Endgame phá kỷ lục phòng vé 2.8 tỷ'],
+    movements: ['Streaming Revolution', 'Korean New Wave', 'A24 Aesthetic', 'Elevated Horror'],
+    directors: ['Bong Joon-ho', 'Denis Villeneuve', 'Jordan Peele', 'Greta Gerwig'],
+    tmdbParams: { 'primary_release_date.gte': '2010-01-01', 'primary_release_date.lte': '2019-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 1000 },
+  },
+  {
+    id: 'd2020', decade: '2020s', label: 'Kỷ Nguyên Mới',
+    years: [2020, 2029], icon: '🚀',
+    palette: { wall: '#030508', accent: '#38bdf8', text: '#bae6fd', glow: '#0ea5e9' },
+    tagline: 'Hậu pandemic — điện ảnh tìm lại chính mình',
+    desc: 'COVID-19 đóng cửa rạp, streaming thắng thế. Nhưng Top Gun: Maverick và Avatar 2 chứng minh rạp chiếu vẫn không thể thay thế. AI bắt đầu đặt câu hỏi lớn về tương lai sáng tạo.',
+    facts: ['COVID-19 đóng cửa toàn bộ rạp năm 2020', 'Top Gun: Maverick — 1.49 tỷ USD, huyền thoại tái xuất', 'Everything Everywhere All at Once — A24 đỉnh cao', 'AI tạo sinh đặt ra câu hỏi bản quyền và sáng tạo'],
+    movements: ['Post-Pandemic Cinema', 'Multiverse Storytelling', 'AI-assisted Filmmaking'],
+    directors: ['Daniel Kwan & Daniel Scheinert', 'Celine Song', 'Yorgos Lanthimos', 'Ryusuke Hamaguchi'],
+    tmdbParams: { 'primary_release_date.gte': '2020-01-01', 'primary_release_date.lte': '2029-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 500 },
+  },
+];
+
+/* ── STATE ────────────────────────────────────────────────── */
+const MUSEUM_STATE = {
+  currentRoom: 0,
+  rooms: [],            // { decade, films, loaded }
+  transitioning: false,
+  ambientInterval: null,
+  walkPos: 0,           // perspective walk 0..1
+};
+
+/* ── CSS ──────────────────────────────────────────────────── */
+function injectMuseumCSS() {
+  if (document.getElementById('museum-style')) return;
+  const s = document.createElement('style');
+  s.id = 'museum-style';
+  s.textContent = `
+/* ─── MUSEUM SHELL ─── */
+#museum-root {
+  width:100%; min-height:100vh;
+  background:#03030a;
+  font-family:'DM Sans',sans-serif;
+  overflow-x:hidden;
+  position:relative;
+}
+
+/* ─── ENTRANCE HALL ─── */
+.mu-entrance {
+  width:100%; min-height:100vh;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  position:relative; overflow:hidden;
+  background: radial-gradient(ellipse 80% 60% at 50% 40%, #0d0820 0%, #03030a 100%);
+}
+.mu-entrance-columns {
+  position:absolute; inset:0; pointer-events:none;
+  display:flex; align-items:flex-end; gap:0;
+}
+.mu-col {
+  flex:1; height:100%;
+  border-left:1px solid rgba(255,255,255,0.025);
+  background:linear-gradient(180deg, transparent 60%, rgba(255,215,50,0.02) 100%);
+}
+.mu-entrance-floor {
+  position:absolute; bottom:0; left:0; right:0; height:30%;
+  background:linear-gradient(0deg, rgba(255,215,50,0.04) 0%, transparent 100%);
+  perspective:800px;
+}
+.mu-entrance-floor-grid {
+  width:100%; height:100%;
+  background-image:
+    linear-gradient(rgba(255,215,50,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,215,50,0.06) 1px, transparent 1px);
+  background-size:60px 40px;
+  transform:rotateX(60deg);
+  transform-origin:bottom;
+}
+.mu-entrance-title {
+  font-family:'Bebas Neue', sans-serif;
+  font-size:clamp(3rem,9vw,7rem);
+  letter-spacing:.12em;
+  color:#f0e8d0;
+  text-align:center;
+  line-height:1;
+  position:relative; z-index:2;
+  text-shadow:0 0 80px rgba(255,200,50,0.25), 0 2px 40px rgba(0,0,0,.8);
+  animation: mu-title-in .8s cubic-bezier(.22,1,.36,1) both;
+}
+.mu-entrance-sub {
+  font-size:clamp(.75rem,1.4vw,.95rem);
+  letter-spacing:.35em;
+  text-transform:uppercase;
+  color:rgba(255,200,80,0.55);
+  text-align:center;
+  margin-top:8px;
+  position:relative; z-index:2;
+  animation: mu-fade-up .6s ease .3s both;
+}
+.mu-entrance-stats {
+  display:flex; gap:32px; margin-top:40px;
+  position:relative; z-index:2;
+  animation: mu-fade-up .6s ease .5s both;
+}
+.mu-stat {
+  text-align:center;
+  border:1px solid rgba(255,200,50,0.12);
+  padding:14px 24px; border-radius:8px;
+  background:rgba(255,200,50,0.03);
+  backdrop-filter:blur(8px);
+}
+.mu-stat-num {
+  font-family:'Bebas Neue',sans-serif;
+  font-size:2rem; color:#f5c030; display:block;
+}
+.mu-stat-label { font-size:.7rem; color:rgba(255,255,255,.35); letter-spacing:.2em; text-transform:uppercase; }
+.mu-enter-btn {
+  margin-top:48px; position:relative; z-index:2;
+  background:transparent;
+  border:1px solid rgba(255,200,50,0.4);
+  color:#f5c030;
+  font-family:'DM Sans',sans-serif;
+  font-size:.95rem; font-weight:600;
+  letter-spacing:.2em; text-transform:uppercase;
+  padding:16px 48px; border-radius:4px;
+  cursor:pointer; transition:all .25s;
+  animation: mu-fade-up .6s ease .7s both;
+}
+.mu-enter-btn:hover {
+  background:rgba(255,200,50,0.08);
+  border-color:rgba(255,200,50,0.8);
+  box-shadow:0 0 40px rgba(255,200,50,0.15), 0 0 80px rgba(255,200,50,0.05);
+  transform:translateY(-2px);
+}
+
+/* ─── MUSEUM MAIN ─── */
+.mu-main { width:100%; display:flex; flex-direction:column; }
+
+/* ─── NAV BAR ─── */
+.mu-nav {
+  position:sticky; top:0; z-index:100;
+  background:rgba(3,3,10,0.92);
+  backdrop-filter:blur(16px);
+  border-bottom:1px solid rgba(255,255,255,0.06);
+  display:flex; align-items:center; gap:0;
+  overflow-x:auto; scrollbar-width:none;
+  padding:0 8px;
+}
+.mu-nav::-webkit-scrollbar { display:none; }
+.mu-nav-back {
+  flex-shrink:0;
+  background:transparent; border:none;
+  color:rgba(255,255,255,.45); font-size:.8rem;
+  padding:0 16px; height:44px; cursor:pointer;
+  letter-spacing:.1em; text-transform:uppercase;
+  transition:color .2s; border-right:1px solid rgba(255,255,255,.06);
+  margin-right:4px;
+}
+.mu-nav-back:hover { color:#f5c030; }
+.mu-nav-pill {
+  flex-shrink:0;
+  background:transparent; border:none;
+  color:rgba(255,255,255,.4);
+  font-size:.72rem; font-weight:500;
+  letter-spacing:.08em;
+  padding:0 14px; height:44px; cursor:pointer;
+  transition:all .2s; position:relative;
+  white-space:nowrap;
+}
+.mu-nav-pill::after {
+  content:''; position:absolute; bottom:0; left:14px; right:14px;
+  height:2px; background:currentColor;
+  transform:scaleX(0); transition:transform .2s; border-radius:2px;
+}
+.mu-nav-pill:hover { color:rgba(255,255,255,.7); }
+.mu-nav-pill.active { color:var(--pill-color,#f5c030); }
+.mu-nav-pill.active::after { transform:scaleX(1); }
+
+/* ─── ROOM ─── */
+.mu-room {
+  width:100%;
+  min-height:100vh;
+  display:none;
+  flex-direction:column;
+  position:relative;
+  overflow:hidden;
+}
+.mu-room.active { display:flex; }
+
+/* Room BG atmosphere */
+.mu-room-bg {
+  position:absolute; inset:0; pointer-events:none;
+  background:var(--room-bg,#060610);
+}
+.mu-room-bg::before {
+  content:''; position:absolute; inset:0;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 0%, var(--room-glow-color,rgba(100,100,200,0.08)) 0%, transparent 60%),
+    repeating-linear-gradient(0deg, transparent, transparent 80px, rgba(255,255,255,.008) 80px, rgba(255,255,255,.008) 81px);
+}
+/* Film grain */
+.mu-room-bg::after {
+  content:''; position:absolute; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  background-size:200px 200px; opacity:.6;
+  animation:grain 0.8s steps(1) infinite;
+}
+@keyframes grain { 0%{background-position:0 0} 10%{background-position:-5% -10%} 20%{background-position:-15% 5%} 30%{background-position:7% -25%} 40%{background-position:-5% 25%} 50%{background-position:-15% 10%} 60%{background-position:15% 0%} 70%{background-position:0 15%} 80%{background-position:3% 35%} 90%{background-position:-10% 10%} to{background-position:0 0} }
+
+/* Room 3D perspective corridor */
+.mu-corridor {
+  position:absolute; inset:0; pointer-events:none;
+  display:flex; align-items:center; justify-content:center;
+  perspective:800px;
+}
+.mu-corridor-inner {
+  width:60%; height:55%;
+  border:1px solid rgba(255,255,255,.04);
+  background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.3) 100%);
+  transform:rotateX(4deg);
+  box-shadow:
+    0 0 120px rgba(0,0,0,.8),
+    inset 0 0 80px rgba(0,0,0,.4);
+  border-radius:2px;
+}
+/* Left & right walls */
+.mu-wall-left, .mu-wall-right {
+  position:absolute; top:0; bottom:0; width:20%;
+  pointer-events:none;
+}
+.mu-wall-left {
+  left:0;
+  background:linear-gradient(90deg, rgba(0,0,0,.6) 0%, transparent 100%);
+  border-right:1px solid rgba(255,255,255,.03);
+}
+.mu-wall-right {
+  right:0;
+  background:linear-gradient(270deg, rgba(0,0,0,.6) 0%, transparent 100%);
+  border-left:1px solid rgba(255,255,255,.03);
+}
+
+/* ─── ROOM CONTENT ─── */
+.mu-room-content {
+  position:relative; z-index:10;
+  display:flex; flex-direction:column;
+  padding:0 0 60px;
+}
+
+/* Room header */
+.mu-room-header {
+  padding:48px 48px 32px;
+  border-bottom:1px solid rgba(255,255,255,.06);
+  display:flex; flex-direction:column; gap:6px;
+}
+.mu-room-decade {
+  font-family:'Bebas Neue',sans-serif;
+  font-size:clamp(3rem,7vw,5.5rem);
+  color:var(--room-accent,#f5c030);
+  line-height:1;
+  text-shadow:0 0 60px var(--room-glow,rgba(245,192,48,0.25));
+  letter-spacing:.05em;
+}
+.mu-room-era {
+  font-size:clamp(.8rem,1.3vw,1rem);
+  letter-spacing:.3em;
+  text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+.mu-room-tagline {
+  font-size:clamp(1rem,1.8vw,1.3rem);
+  font-weight:300; font-style:italic;
+  color:rgba(255,255,255,.65);
+  margin-top:4px;
+}
+
+/* ─── LAYOUT: sidebar + main ─── */
+.mu-room-body {
+  display:grid;
+  grid-template-columns:300px 1fr;
+  gap:0;
+  min-height:70vh;
+}
+@media(max-width:900px) { .mu-room-body { grid-template-columns:1fr; } }
+
+/* Sidebar */
+.mu-sidebar {
+  border-right:1px solid rgba(255,255,255,.05);
+  padding:32px 28px;
+  display:flex; flex-direction:column; gap:28px;
+}
+.mu-sidebar-section { display:flex; flex-direction:column; gap:12px; }
+.mu-sidebar-label {
+  font-size:.65rem; letter-spacing:.25em; text-transform:uppercase;
+  color:rgba(255,255,255,.3); border-bottom:1px solid rgba(255,255,255,.06);
+  padding-bottom:8px; margin-bottom:4px;
+}
+.mu-desc {
+  font-size:.88rem; line-height:1.7;
+  color:rgba(255,255,255,.5);
+}
+.mu-fact-item {
+  font-size:.8rem; line-height:1.5;
+  color:rgba(255,255,255,.55);
+  padding-left:14px; position:relative;
+}
+.mu-fact-item::before {
+  content:''; position:absolute; left:0; top:.55em;
+  width:6px; height:6px; border-radius:50%;
+  background:var(--room-accent,#f5c030); opacity:.6;
+}
+.mu-movement-tag {
+  display:inline-block;
+  font-size:.72rem;
+  padding:4px 10px; border-radius:20px;
+  border:1px solid var(--room-accent,#f5c030);
+  color:var(--room-accent,#f5c030);
+  opacity:.65; margin:2px;
+  background:rgba(0,0,0,.3);
+}
+.mu-director-chip {
+  display:flex; align-items:center; gap:10px;
+  padding:8px 12px; border-radius:8px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.06);
+  cursor:pointer; transition:all .2s;
+  font-size:.82rem; color:rgba(255,255,255,.7);
+}
+.mu-director-chip:hover {
+  background:rgba(255,255,255,.08);
+  border-color:var(--room-accent,#f5c030);
+  color:#fff;
+}
+.mu-director-chip::before {
+  content:'🎬'; font-size:.9rem;
+}
+
+/* ─── FILMS WALL ─── */
+.mu-films-wall {
+  padding:32px 36px;
+  display:flex; flex-direction:column; gap:24px;
+}
+.mu-films-wall-title {
+  font-size:.72rem; letter-spacing:.25em; text-transform:uppercase;
+  color:rgba(255,255,255,.3);
+  display:flex; align-items:center; gap:12px;
+}
+.mu-films-wall-title::after {
+  content:''; flex:1; height:1px; background:rgba(255,255,255,.06);
+}
+.mu-poster-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(130px,1fr));
+  gap:16px;
+}
+.mu-poster-card {
+  position:relative; cursor:pointer;
+  border-radius:6px; overflow:hidden;
+  aspect-ratio:.667;
+  background:#111;
+  transition:transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s;
+  border:1px solid rgba(255,255,255,.05);
+}
+.mu-poster-card::before {
+  content:''; position:absolute; inset:0; z-index:1;
+  background:linear-gradient(180deg, transparent 50%, rgba(0,0,0,.9) 100%);
+  opacity:0; transition:opacity .25s;
+}
+.mu-poster-card:hover {
+  transform:translateY(-6px) scale(1.03);
+  box-shadow:0 20px 60px rgba(0,0,0,.6), 0 0 0 1px var(--room-accent,#f5c030);
+  z-index:2;
+}
+.mu-poster-card:hover::before { opacity:1; }
+.mu-poster-img {
+  width:100%; height:100%; object-fit:cover;
+  display:block;
+}
+.mu-poster-no-img {
+  width:100%; height:100%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:2rem; background:#0d0d1a;
+  color:rgba(255,255,255,.15);
+}
+.mu-poster-overlay {
+  position:absolute; bottom:0; left:0; right:0; z-index:2;
+  padding:12px 10px 10px;
+  background:linear-gradient(0deg, rgba(0,0,0,.95) 0%, transparent 100%);
+  opacity:0; transition:opacity .25s;
+  display:flex; flex-direction:column; gap:3px;
+}
+.mu-poster-card:hover .mu-poster-overlay { opacity:1; }
+.mu-poster-title {
+  font-size:.75rem; font-weight:600;
+  color:#fff; line-height:1.2;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.mu-poster-meta {
+  display:flex; align-items:center; gap:6px;
+  font-size:.68rem; color:rgba(255,255,255,.6);
+}
+.mu-poster-rating {
+  padding:2px 6px; border-radius:3px;
+  font-size:.65rem; font-weight:700;
+}
+
+/* ─── LOADING SKELETON ─── */
+.mu-skeleton {
+  border-radius:6px; aspect-ratio:.667;
+  background:linear-gradient(90deg, #111 25%, #1a1a1a 50%, #111 75%);
+  background-size:200% 100%;
+  animation:mu-shimmer 1.4s ease infinite;
+}
+@keyframes mu-shimmer { 0%{background-position:200%} 100%{background-position:-200%} }
+
+/* ─── TIMELINE ─── */
+.mu-timeline {
+  padding:28px 48px;
+  border-top:1px solid rgba(255,255,255,.05);
+  display:flex; gap:0; overflow-x:auto; scrollbar-width:none;
+}
+.mu-timeline::-webkit-scrollbar { display:none; }
+.mu-timeline-item {
+  display:flex; flex-direction:column; align-items:center;
+  gap:8px; min-width:90px; cursor:pointer;
+  transition:transform .2s;
+}
+.mu-timeline-item:hover { transform:translateY(-3px); }
+.mu-timeline-year {
+  font-family:'Bebas Neue',sans-serif; font-size:1rem;
+  color:var(--room-accent,#f5c030); letter-spacing:.1em;
+}
+.mu-timeline-dot {
+  width:8px; height:8px; border-radius:50%;
+  background:var(--room-accent,#f5c030);
+  box-shadow:0 0 8px var(--room-glow,rgba(245,192,48,.4));
+  position:relative;
+}
+.mu-timeline-dot::before {
+  content:''; position:absolute; left:50%; top:100%;
+  width:1px; height:40px;
+  background:linear-gradient(180deg, var(--room-accent,#f5c030), transparent);
+  transform:translateX(-50%);
+}
+.mu-timeline-event {
+  font-size:.62rem; text-align:center;
+  color:rgba(255,255,255,.4); line-height:1.3; max-width:80px;
+}
+.mu-tl-connector {
+  flex:1; min-width:24px;
+  height:1px; background:rgba(255,255,255,.06);
+  align-self:center; margin-top:-28px;
+}
+
+/* ─── NAVIGATION ARROWS ─── */
+.mu-room-nav {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:24px 48px;
+  border-top:1px solid rgba(255,255,255,.05);
+}
+.mu-nav-arrow {
+  display:flex; align-items:center; gap:12px;
+  background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
+  color:rgba(255,255,255,.6); padding:12px 24px; border-radius:6px;
+  cursor:pointer; font-size:.82rem; transition:all .25s;
+  font-family:'DM Sans',sans-serif;
+}
+.mu-nav-arrow:hover {
+  background:rgba(255,255,255,.08);
+  border-color:rgba(255,255,255,.2); color:#fff;
+}
+.mu-nav-arrow:disabled { opacity:.2; cursor:not-allowed; }
+.mu-nav-arrow .arrow-label { display:flex; flex-direction:column; gap:2px; text-align:left; }
+.mu-nav-arrow .arrow-decade {
+  font-family:'Bebas Neue',sans-serif; font-size:1.1rem; letter-spacing:.1em;
+  color:var(--room-accent,#f5c030); line-height:1;
+}
+.mu-nav-dots {
+  display:flex; gap:8px;
+}
+.mu-nav-dot {
+  width:6px; height:6px; border-radius:50%;
+  background:rgba(255,255,255,.15); cursor:pointer;
+  transition:all .2s;
+}
+.mu-nav-dot.active {
+  background:var(--room-accent,#f5c030);
+  box-shadow:0 0 8px var(--room-glow,rgba(245,192,48,.5));
+  transform:scale(1.4);
+}
+
+/* ─── TRANSITIONS ─── */
+.mu-room { animation: mu-room-in .5s cubic-bezier(.22,1,.36,1) both; }
+@keyframes mu-room-in {
+  from { opacity:0; transform:translateX(30px); }
+  to { opacity:1; transform:translateX(0); }
+}
+
+/* ─── ANIMATIONS ─── */
+@keyframes mu-title-in {
+  from { opacity:0; transform:scaleX(.8) translateY(-20px); filter:blur(20px); }
+  to   { opacity:1; transform:scaleX(1)  translateY(0);     filter:blur(0); }
+}
+@keyframes mu-fade-up {
+  from { opacity:0; transform:translateY(10px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+/* ─── RESPONSIVE ─── */
+@media(max-width:600px) {
+  .mu-room-header { padding:24px 20px 20px; }
+  .mu-sidebar { padding:20px; }
+  .mu-films-wall { padding:20px; }
+  .mu-room-nav { padding:16px 20px; }
+  .mu-poster-grid { grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:10px; }
+}
+
+/* ─── HIGHLIGHT BADGE ─── */
+.mu-highlight-badge {
+  position:absolute; top:8px; left:8px; z-index:3;
+  background:#f5c030; color:#000;
+  font-size:.58rem; font-weight:700; letter-spacing:.1em;
+  padding:2px 7px; border-radius:3px; text-transform:uppercase;
+}
+  `;
+  document.head.appendChild(s);
+}
+
+/* ── HELPERS ──────────────────────────────────────────────── */
+function muRatingBg(r) {
+  const v = parseFloat(r);
+  if (v >= 8)  return '#1a6a2a';
+  if (v >= 7)  return '#2a4a1a';
+  if (v >= 6)  return '#4a3a10';
+  return '#3a1a1a';
+}
+function muRatingFg(r) {
+  const v = parseFloat(r);
+  if (v >= 8)  return '#4ade80';
+  if (v >= 7)  return '#86efac';
+  if (v >= 6)  return '#fde047';
+  return '#fca5a5';
+}
+
+/* ── FETCH FILMS FOR DECADE ───────────────────────────────── */
+async function fetchDecadeFilms(decadeData) {
+  if (!STATE.tmdbKey) return [];
+  try {
+    const [p1, p2] = await Promise.all([
+      tmdb('/discover/movie', { ...decadeData.tmdbParams, page: 1 }),
+      tmdb('/discover/movie', { ...decadeData.tmdbParams, page: 2 }),
+    ]);
+    const results = [...(p1.results || []), ...(p2.results || [])];
+    return results.slice(0, 20).map(m => normalizeMovie(m, 'movie'));
+  } catch(e) {
+    return [];
+  }
+}
+
+/* ── BUILD ROOM DOM ───────────────────────────────────────── */
+function buildMuseumRoom(decade, idx) {
+  const p = decade.palette;
+
+  const room = document.createElement('div');
+  room.className = 'mu-room';
+  room.id = `mu-room-${idx}`;
+  room.style.cssText = `
+    --room-accent:${p.accent};
+    --room-text:${p.text};
+    --room-glow:${p.glow};
+    --room-bg:${p.wall};
+    --room-glow-color:${p.glow}18;
+  `;
+
+  // BG atmosphere
+  const bg = document.createElement('div');
+  bg.className = 'mu-room-bg';
+  room.appendChild(bg);
+
+  // 3D Corridor (decorative)
+  const corridor = document.createElement('div');
+  corridor.className = 'mu-corridor';
+  corridor.innerHTML = `
+    <div class="mu-wall-left"></div>
+    <div class="mu-corridor-inner"></div>
+    <div class="mu-wall-right"></div>
+  `;
+  room.appendChild(corridor);
+
+  // Content
+  const content = document.createElement('div');
+  content.className = 'mu-room-content';
+
+  // Header
+  const hdr = document.createElement('div');
+  hdr.className = 'mu-room-header';
+  hdr.innerHTML = `
+    <div class="mu-room-decade">${decade.decade}</div>
+    <div class="mu-room-era">${decade.label}</div>
+    <div class="mu-room-tagline">"${decade.tagline}"</div>
+  `;
+  content.appendChild(hdr);
+
+  // Body (sidebar + films)
+  const body = document.createElement('div');
+  body.className = 'mu-room-body';
+
+  // ── SIDEBAR ──
+  const sidebar = document.createElement('div');
+  sidebar.className = 'mu-sidebar';
+
+  // Description
+  const descSec = document.createElement('div');
+  descSec.className = 'mu-sidebar-section';
+  descSec.innerHTML = `
+    <div class="mu-sidebar-label">Bối cảnh</div>
+    <div class="mu-desc">${decade.desc}</div>
+  `;
+  sidebar.appendChild(descSec);
+
+  // Facts
+  const factSec = document.createElement('div');
+  factSec.className = 'mu-sidebar-section';
+  factSec.innerHTML = `<div class="mu-sidebar-label">Dấu Ấn Lịch Sử</div>
+    ${decade.facts.map(f => `<div class="mu-fact-item">${f}</div>`).join('')}
+  `;
+  sidebar.appendChild(factSec);
+
+  // Movements
+  const movSec = document.createElement('div');
+  movSec.className = 'mu-sidebar-section';
+  movSec.innerHTML = `<div class="mu-sidebar-label">Trào Lưu</div>
+    <div>${decade.movements.map(m => `<span class="mu-movement-tag">${m}</span>`).join('')}</div>
+  `;
+  sidebar.appendChild(movSec);
+
+  // Directors
+  const dirSec = document.createElement('div');
+  dirSec.className = 'mu-sidebar-section';
+  dirSec.innerHTML = `<div class="mu-sidebar-label">Đạo Diễn Tiêu Biểu</div>`;
+  decade.directors.forEach(name => {
+    const chip = document.createElement('div');
+    chip.className = 'mu-director-chip';
+    chip.textContent = name;
+    chip.addEventListener('click', () => {
+      showDirectorPage({ name, avatar: '' });
+    });
+    dirSec.appendChild(chip);
+  });
+  sidebar.appendChild(dirSec);
+
+  body.appendChild(sidebar);
+
+  // ── FILMS WALL ──
+  const wall = document.createElement('div');
+  wall.className = 'mu-films-wall';
+  wall.innerHTML = `<div class="mu-films-wall-title">🎬 Phim tiêu biểu</div>`;
+
+  const posterGrid = document.createElement('div');
+  posterGrid.className = 'mu-poster-grid';
+  posterGrid.id = `mu-poster-grid-${idx}`;
+
+  // Skeleton placeholders
+  for (let i = 0; i < 12; i++) {
+    const sk = document.createElement('div');
+    sk.className = 'mu-skeleton';
+    posterGrid.appendChild(sk);
+  }
+  wall.appendChild(posterGrid);
+  body.appendChild(wall);
+  content.appendChild(body);
+
+  // ── NAVIGATION ──
+  const nav = document.createElement('div');
+  nav.className = 'mu-room-nav';
+
+  const prevDecade = MUSEUM_DECADES[idx - 1];
+  const nextDecade = MUSEUM_DECADES[idx + 1];
+
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'mu-nav-arrow';
+  if (!prevDecade) prevBtn.disabled = true;
+  prevBtn.innerHTML = prevDecade
+    ? `← <div class="arrow-label"><span style="font-size:.65rem;color:rgba(255,255,255,.35)">Phòng trước</span><span class="arrow-decade">${prevDecade.decade}</span></div>`
+    : `← Lối vào`;
+  prevBtn.addEventListener('click', () => {
+    if (prevDecade) goToRoom(idx - 1);
+    else showMuseumEntrance();
+  });
+
+  // Dots
+  const dots = document.createElement('div');
+  dots.className = 'mu-nav-dots';
+  MUSEUM_DECADES.forEach((_, di) => {
+    const dot = document.createElement('div');
+    dot.className = `mu-nav-dot${di === idx ? ' active' : ''}`;
+    dot.addEventListener('click', () => goToRoom(di));
+    dots.appendChild(dot);
+  });
+
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'mu-nav-arrow';
+  if (!nextDecade) nextBtn.disabled = true;
+  nextBtn.innerHTML = nextDecade
+    ? `<div class="arrow-label" style="text-align:right"><span style="font-size:.65rem;color:rgba(255,255,255,.35)">Phòng tiếp</span><span class="arrow-decade">${nextDecade.decade}</span></div> →`
+    : `Hết hành trình →`;
+  nextBtn.addEventListener('click', () => nextDecade && goToRoom(idx + 1));
+
+  nav.appendChild(prevBtn);
+  nav.appendChild(dots);
+  nav.appendChild(nextBtn);
+  content.appendChild(nav);
+
+  room.appendChild(content);
+  return room;
+}
+
+/* ── RENDER FILM CARDS ────────────────────────────────────── */
+function renderMuseumPosters(films, gridEl, decade) {
+  gridEl.innerHTML = '';
+  if (!films.length) {
+    gridEl.innerHTML = `<div style="color:rgba(255,255,255,.3);font-size:.85rem;grid-column:1/-1;padding:20px 0;">
+      Không có dữ liệu — cần TMDB Key để tải phim
+    </div>`;
+    return;
+  }
+
+  films.forEach((film, i) => {
+    const card = document.createElement('div');
+    card.className = 'mu-poster-card';
+
+    if (film.poster) {
+      const img = document.createElement('img');
+      img.className = 'mu-poster-img';
+      img.src = film.poster;
+      img.alt = film.title;
+      img.loading = 'lazy';
+      card.appendChild(img);
+    } else {
+      const ph = document.createElement('div');
+      ph.className = 'mu-poster-no-img';
+      ph.textContent = '🎬';
+      card.appendChild(ph);
+    }
+
+    // Top badge for top 3
+    if (i < 3) {
+      const badge = document.createElement('div');
+      badge.className = 'mu-highlight-badge';
+      badge.textContent = i === 0 ? '🏆 #1' : i === 1 ? '#2' : '#3';
+      card.appendChild(badge);
+    }
+
+    // Overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'mu-poster-overlay';
+    const ratingStyle = `background:${muRatingBg(film.rating)};color:${muRatingFg(film.rating)};`;
+    overlay.innerHTML = `
+      <div class="mu-poster-title">${film.title}</div>
+      <div class="mu-poster-meta">
+        <span class="mu-poster-rating" style="${ratingStyle}">⭐ ${film.rating}</span>
+        <span>${film.year || ''}</span>
+      </div>
+    `;
+    card.appendChild(overlay);
+
+    card.addEventListener('click', () => showDetailPage(film));
+    gridEl.appendChild(card);
+  });
+}
+
+/* ── ENTRANCE SCREEN ──────────────────────────────────────── */
+function showMuseumEntrance() {
+  const root = document.getElementById('museum-root');
+  root.innerHTML = '';
+
+  // Hide main, show entrance
+  const entrance = document.createElement('div');
+  entrance.className = 'mu-entrance';
+  entrance.id = 'mu-entrance';
+
+  // Columns decorative
+  const cols = document.createElement('div');
+  cols.className = 'mu-entrance-columns';
+  for (let i = 0; i < 12; i++) {
+    const c = document.createElement('div');
+    c.className = 'mu-col';
+    cols.appendChild(c);
+  }
+  entrance.appendChild(cols);
+
+  // Floor grid
+  entrance.innerHTML += `<div class="mu-entrance-floor"><div class="mu-entrance-floor-grid"></div></div>`;
+
+  // Title
+  const title = document.createElement('div');
+  title.className = 'mu-entrance-title';
+  title.innerHTML = `🏛️ FILM MUSEUM`;
+  entrance.appendChild(title);
+
+  const sub = document.createElement('div');
+  sub.className = 'mu-entrance-sub';
+  sub.textContent = 'Bảo Tàng Lịch Sử Điện Ảnh Thế Giới';
+  entrance.appendChild(sub);
+
+  // Stats
+  const stats = document.createElement('div');
+  stats.className = 'mu-entrance-stats';
+  stats.innerHTML = `
+    <div class="mu-stat"><span class="mu-stat-num">11</span><span class="mu-stat-label">Phòng trưng bày</span></div>
+    <div class="mu-stat"><span class="mu-stat-num">110+</span><span class="mu-stat-label">Thập kỷ điện ảnh</span></div>
+    <div class="mu-stat"><span class="mu-stat-num">100+</span><span class="mu-stat-label">Kiệt tác</span></div>
+  `;
+  entrance.appendChild(stats);
+
+  const enterBtn = document.createElement('button');
+  enterBtn.className = 'mu-enter-btn';
+  enterBtn.textContent = '🚪 Vào Bảo Tàng';
+  enterBtn.addEventListener('click', () => enterMuseum());
+  entrance.appendChild(enterBtn);
+
+  root.appendChild(entrance);
+}
+
+/* ── ENTER MUSEUM (build all rooms) ──────────────────────── */
+function enterMuseum() {
+  const root = document.getElementById('museum-root');
+  root.innerHTML = '';
+
+  // Build nav bar
+  const nav = document.createElement('nav');
+  nav.className = 'mu-nav';
+
+  const backBtn = document.createElement('button');
+  backBtn.className = 'mu-nav-back';
+  backBtn.textContent = '← Sảnh';
+  backBtn.addEventListener('click', () => showMuseumEntrance());
+  nav.appendChild(backBtn);
+
+  MUSEUM_DECADES.forEach((d, idx) => {
+    const pill = document.createElement('button');
+    pill.className = `mu-nav-pill${idx === 0 ? ' active' : ''}`;
+    pill.style.setProperty('--pill-color', d.palette.accent);
+    pill.textContent = `${d.icon} ${d.decade}`;
+    pill.dataset.roomIdx = idx;
+    pill.addEventListener('click', () => goToRoom(idx));
+    nav.appendChild(pill);
+  });
+
+  root.appendChild(nav);
+
+  // Build rooms container
+  const roomsWrap = document.createElement('div');
+  roomsWrap.id = 'mu-rooms';
+  root.appendChild(roomsWrap);
+
+  // Build each room
+  MUSEUM_DECADES.forEach((d, idx) => {
+    const room = buildMuseumRoom(d, idx);
+    roomsWrap.appendChild(room);
+  });
+
+  // Show room 0
+  goToRoom(0);
+}
+
+/* ── NAVIGATE ROOMS ───────────────────────────────────────── */
+function goToRoom(idx) {
+  if (MUSEUM_STATE.transitioning) return;
+  MUSEUM_STATE.transitioning = true;
+
+  const rooms = document.querySelectorAll('.mu-room');
+  const pills = document.querySelectorAll('.mu-nav-pill');
+
+  // Deactivate all
+  rooms.forEach(r => r.classList.remove('active'));
+  pills.forEach(p => p.classList.remove('active'));
+
+  // Activate target
+  const targetRoom = document.getElementById(`mu-room-${idx}`);
+  if (!targetRoom) { MUSEUM_STATE.transitioning = false; return; }
+
+  targetRoom.classList.add('active');
+  // Reset animation
+  targetRoom.style.animation = 'none';
+  void targetRoom.offsetWidth;
+  targetRoom.style.animation = '';
+
+  if (pills[idx]) pills[idx].classList.add('active');
+  MUSEUM_STATE.currentRoom = idx;
+
+  setTimeout(() => { MUSEUM_STATE.transitioning = false; }, 500);
+
+  // Scroll to top of room
+  targetRoom.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Load films if not yet loaded
+  const gridEl = document.getElementById(`mu-poster-grid-${idx}`);
+  if (gridEl && !gridEl.dataset.loaded) {
+    gridEl.dataset.loaded = '1';
+    fetchDecadeFilms(MUSEUM_DECADES[idx]).then(films => {
+      renderMuseumPosters(films, gridEl, MUSEUM_DECADES[idx]);
+    });
+  }
+}
+
+/* ── DESTROY ──────────────────────────────────────────────── */
+function destroyMuseum() {
+  if (MUSEUM_STATE.ambientInterval) {
+    clearInterval(MUSEUM_STATE.ambientInterval);
+    MUSEUM_STATE.ambientInterval = null;
+  }
+}
+
+/* ── ENTRY POINT ──────────────────────────────────────────── */
+function loadFilmMuseum() {
+  injectMuseumCSS();
+  const root = document.getElementById('museum-root');
+  if (!root) return;
+  // Lazy: if already rendered entrance, skip
+  if (root.querySelector('.mu-entrance') || root.querySelector('.mu-nav')) return;
+  showMuseumEntrance();
+}
