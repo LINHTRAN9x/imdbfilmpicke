@@ -1423,7 +1423,8 @@ function renderDetailBody(body, m, d) {
   // Vietsub search
   renderDirectorsCut(right, m, d);
   renderFilmedLocations(right, m, d);
-  renderFilmMusic(right, m, d)
+  renderFilmMusic(right, m, d);
+  renderReviewSection(right, m, d);
   
 
   right.appendChild(el('hr', 'detail-divider'));
@@ -10617,4 +10618,567 @@ function loadFilmMuseum() {
   // Lazy: if already rendered entrance, skip
   if (root.querySelector('.mu-entrance') || root.querySelector('.mu-nav')) return;
   showMuseumEntrance();
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   📝  REVIEW SECTION — Gộp TMDB + Wiki, tự dịch VI, no tabs
+   
+   TÍCH HỢP:
+   1. Paste file này vào CUỐI app.js
+   2. Trong renderDetailBody(m, d), cuối right column thêm:
+        renderReviewSection(right, m, d);
+══════════════════════════════════════════════════════════════ */
+
+/* ─── CSS ─────────────────────────────────────────────────── */
+function injectReviewCSS() {
+  if (document.getElementById('rv-style')) return;
+  const s = document.createElement('style');
+  s.id = 'rv-style';
+  s.textContent = `
+.rv-section {
+  margin-top: 36px;
+  border-top: 1px solid rgba(255,255,255,.07);
+  padding-top: 4px;
+}
+.rv-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 0 14px; cursor: pointer; user-select: none;
+}
+.rv-header-left { display: flex; align-items: center; gap: 10px; }
+.rv-header-icon { font-size: 1.1rem; }
+.rv-header-title { font-size: .95rem; font-weight: 600; color: #e8edf5; }
+.rv-header-badge {
+  font-size: .68rem; color: #7a8fa8;
+  background: rgba(255,255,255,.06);
+  padding: 2px 8px; border-radius: 10px;
+}
+.rv-chevron { color: #7a8fa8; font-size: .72rem; transition: transform .2s; }
+.rv-header.open .rv-chevron { transform: rotate(180deg); }
+.rv-body { display: none; flex-direction: column; gap: 0; padding-bottom: 28px; }
+.rv-body.open { display: flex; }
+
+/* loading */
+.rv-loading {
+  display: flex; align-items: center; gap: 10px;
+  color: #7a8fa8; font-size: .82rem; padding: 20px 0;
+}
+.rv-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,.1);
+  border-top-color: #f5c518; border-radius: 50%;
+  animation: rv-spin .7s linear infinite; flex-shrink: 0;
+}
+@keyframes rv-spin { to { transform: rotate(360deg); } }
+
+/* translate progress */
+.rv-translate-bar {
+  display: flex; align-items: center; gap: 8px;
+  font-size: .72rem; color: #7a8fa8; margin-bottom: 10px;
+}
+.rv-translate-bar-track {
+  flex: 1; height: 2px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden;
+}
+.rv-translate-bar-fill {
+  height: 100%; background: #f5c518; border-radius: 2px;
+  transition: width .3s ease; width: 0%;
+}
+
+/* scroll wrap */
+.rv-scroll-wrap { position: relative; }
+.rv-scroll-wrap::before, .rv-scroll-wrap::after {
+  content: ''; position: absolute; top: 0; bottom: 14px; width: 48px;
+  pointer-events: none; z-index: 2;
+}
+.rv-scroll-wrap::before { left: 0; background: linear-gradient(90deg, #080c14, transparent); }
+.rv-scroll-wrap::after  { right: 0; background: linear-gradient(270deg, #080c14, transparent); }
+.rv-scroll-track {
+  display: flex; gap: 14px;
+  overflow-x: auto; overflow-y: visible;
+  padding: 4px 4px 14px;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.1) transparent;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  cursor: grab;
+  align-items: stretch;
+}
+.rv-scroll-track:active { cursor: grabbing; }
+.rv-scroll-track::-webkit-scrollbar { height: 4px; }
+.rv-scroll-track::-webkit-scrollbar-track { background: transparent; }
+.rv-scroll-track::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 4px; }
+
+/* nav arrows */
+.rv-scroll-nav {
+  display: flex; gap: 6px; align-items: center;
+  margin-bottom: 10px; justify-content: flex-end;
+}
+.rv-scroll-btn {
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+  color: #a8b4c4; width: 28px; height: 28px; border-radius: 6px;
+  cursor: pointer; font-size: .8rem;
+  display: flex; align-items: center; justify-content: center; transition: all .15s;
+}
+.rv-scroll-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+.rv-scroll-btn:disabled { opacity: .25; pointer-events: none; }
+
+/* card */
+.rv-card {
+  flex-shrink: 0; width: 300px; min-height: unset;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 12px; padding: 18px;
+  display: flex; flex-direction: column; gap: 12px;
+  scroll-snap-align: start;
+  transition: border-color .2s, transform .2s, box-shadow .2s;
+  position: relative; overflow: hidden; box-sizing: border-box;
+}
+.rv-card::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(245,197,24,.025) 0%, transparent 60%);
+  pointer-events: none;
+}
+.rv-card:hover {
+  border-color: rgba(255,255,255,.14);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0,0,0,.4);
+}
+/* wiki card accent */
+.rv-card.wiki-card {
+  border-color: rgba(88,166,255,.15);
+  background: rgba(88,166,255,.03);
+}
+.rv-card.wiki-card::before {
+  background: linear-gradient(135deg, rgba(88,166,255,.04) 0%, transparent 60%);
+}
+
+/* card author */
+.rv-card-author { display: flex; align-items: center; gap: 10px; }
+.rv-avatar {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, #1a3058, #0d1f35);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .85rem; font-weight: 700; color: #f5c518; overflow: hidden;
+  border: 1px solid rgba(245,197,24,.2);
+}
+.rv-avatar.wiki-av { color: #58a6ff; border-color: rgba(88,166,255,.3); }
+.rv-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.rv-author-info { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.rv-author-name {
+  font-size: .82rem; font-weight: 600; color: #e8edf5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rv-author-meta { font-size: .68rem; color: #7a8fa8; }
+
+/* stars */
+.rv-stars { display: flex; gap: 1px; align-items: center; margin-left: auto; flex-shrink: 0; }
+.rv-star { font-size: .65rem; color: rgba(255,255,255,.12); }
+.rv-star.filled { color: #f5c518; }
+.rv-score-badge {
+  font-size: .68rem; font-weight: 700;
+  background: rgba(245,197,24,.12); color: #f5c518;
+  padding: 2px 6px; border-radius: 4px; margin-left: 4px;
+  border: 1px solid rgba(245,197,24,.2);
+}
+
+/* text */
+.rv-text {
+  font-size: .82rem; line-height: 1.65; color: #a8b4c4;
+  overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical;
+  white-space: pre-wrap; word-break: break-word;
+}
+.rv-text.collapsed { -webkit-line-clamp: 5; }
+.rv-text.expanded  { -webkit-line-clamp: unset; }
+.rv-text.translating { opacity: .5; font-style: italic; }
+
+/* footer */
+.rv-card-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-top: auto; padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,.05);
+}
+.rv-source-chip {
+  font-size: .6rem; letter-spacing: .06em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 10px;
+  font-weight: 600;
+}
+.rv-source-chip.tmdb { color: #f5c518; background: rgba(245,197,24,.1); border: 1px solid rgba(245,197,24,.2); }
+.rv-source-chip.wiki { color: #58a6ff; background: rgba(88,166,255,.1); border: 1px solid rgba(88,166,255,.2); }
+.rv-expand-btn {
+  background: transparent; border: none; color: #4488ff; font-size: .72rem;
+  cursor: pointer; padding: 0; font-family: 'DM Sans', sans-serif; transition: color .15s;
+}
+.rv-expand-btn:hover { color: #88aaff; }
+.rv-wiki-link {
+  font-size: .65rem; color: #7a8fa8; text-decoration: none; transition: color .15s;
+}
+.rv-wiki-link:hover { color: #58a6ff; }
+
+/* empty */
+.rv-empty { text-align: center; padding: 32px 0; color: #7a8fa8; font-size: .85rem; }
+  `;
+  document.head.appendChild(s);
+}
+
+/* ─── GOOGLE TRANSLATE ─────────────────────────────────────── */
+async function translateToVi(text) {
+  try {
+    const chunks = [];
+    // Chia nhỏ nếu quá 4000 ký tự
+    for (let i = 0; i < text.length; i += 4000) chunks.push(text.slice(i, i + 4000));
+    const parts = await Promise.all(chunks.map(async chunk => {
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=vi&dt=t&q=${encodeURIComponent(chunk)}`;
+      const res  = await fetch(url);
+      const data = await res.json();
+      return (data[0] || []).map(s => s?.[0] || '').join('');
+    }));
+    return parts.join('');
+  } catch { return null; }
+}
+
+/* ─── FETCH TMDB REVIEWS ───────────────────────────────────── */
+async function fetchTMDBReviews(movie) {
+  if (!STATE.tmdbKey || !movie.tmdb_id) return [];
+  try {
+    const mt   = movie.mediaType || 'movie';
+    const data = await tmdb(`/${mt}/${movie.tmdb_id}/reviews`, { page: 1 });
+    return (data.results || []).slice(0, 12).map(r => ({
+      id:     r.id,
+      author: r.author || 'Ẩn danh',
+      avatar: r.author_details?.avatar_path
+                ? (r.author_details.avatar_path.startsWith('/https')
+                    ? r.author_details.avatar_path.slice(1)
+                    : `https://image.tmdb.org/t/p/w45${r.author_details.avatar_path}`)
+                : null,
+      rating: r.author_details?.rating || null,
+      text:   (r.content || '').slice(0, 1500),
+      date:   r.created_at ? new Date(r.created_at).toLocaleDateString('vi-VN') : '',
+      source: 'TMDB',
+    }));
+  } catch { return []; }
+}
+
+/* ─── FETCH WIKIPEDIA CRITICAL RECEPTION ──────────────────── */
+async function fetchWikiReception(movie) {
+  try {
+    const title = movie.title || movie.name || '';
+    const year  = (movie.year || '').toString().slice(0, 4);
+
+    const searchRes  = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(title + ' film ' + year)}&srlimit=1&format=json&origin=*`
+    );
+    const searchData = await searchRes.json();
+    const pageTitle  = searchData?.query?.search?.[0]?.title;
+    if (!pageTitle) return null;
+
+    const secRes   = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(pageTitle)}&prop=sections&format=json&origin=*`
+    );
+    const sections = (await secRes.json()).parse?.sections || [];
+    const recSec   = sections.find(s => /reception|critical|review|response/i.test(s.line));
+    if (!recSec) return null;
+
+    const txtRes = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(pageTitle)}&prop=text&section=${recSec.index}&format=json&origin=*`
+    );
+    const html = (await txtRes.json()).parse?.text?.['*'] || '';
+    if (!html) return null;
+
+    // ── Strip HTML sạch ──────────────────────────────────────
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    // Xóa các node rác
+    div.querySelectorAll(
+      'sup, .reference, .mw-editsection, style, script, ' +
+      '.reflist, .references, .navbox, .infobox, .hatnote, ' +
+      '.mw-references-wrap, table'
+    ).forEach(n => n.remove());
+    // Lấy từng đoạn <p> để giữ cấu trúc
+    const paras = [...div.querySelectorAll('p')]
+      .map(p => p.textContent.replace(/\[\d+\]/g, '').replace(/\s+/g, ' ').trim())
+      .filter(t => t.length > 40);
+    let text = paras.join('\n\n');
+    // Xóa CSS rò rỉ
+    text = text.replace(/\.[\w-]+\s*\{[^}]{0,400}\}/g, '');
+    text = text.replace(/@[\w-]+[^{]*\{[^}]{0,400}\}/g, '');
+    text = text.replace(/https?:\/\/\S+/g, '');
+    text = text.replace(/\[\s*\]/g, '').replace(/\s{3,}/g, '\n\n').trim().slice(0, 2000);
+
+    if (text.length < 80) return null;
+
+    return { id: 'wiki', author: 'Wikipedia', avatar: null, rating: null,
+             text, date: '', source: 'Wikipedia', wikiPage: pageTitle };
+  } catch { return null; }
+}
+
+/* ─── BUILD CARD ───────────────────────────────────────────── */
+function buildReviewCard(rv) {
+  const isWiki = rv.source === 'Wikipedia';
+  const card   = document.createElement('div');
+  card.className = `rv-card${isWiki ? ' wiki-card' : ''}`;
+
+  // Author
+  const authorRow = document.createElement('div');
+  authorRow.className = 'rv-card-author';
+
+  const avatar = document.createElement('div');
+  avatar.className = `rv-avatar${isWiki ? ' wiki-av' : ''}`;
+  if (rv.avatar) {
+    const img = document.createElement('img');
+    img.src = rv.avatar; img.alt = rv.author;
+    img.onerror = () => { avatar.textContent = rv.author.charAt(0).toUpperCase(); };
+    avatar.appendChild(img);
+  } else {
+    avatar.textContent = isWiki ? '📖' : rv.author.charAt(0).toUpperCase();
+  }
+  authorRow.appendChild(avatar);
+
+  const info = document.createElement('div');
+  info.className = 'rv-author-info';
+  info.innerHTML = `
+    <div class="rv-author-name">${rv.author}</div>
+    ${rv.date ? `<div class="rv-author-meta">${rv.date}</div>` : ''}
+  `;
+  authorRow.appendChild(info);
+
+  if (rv.rating) {
+    const starsWrap = document.createElement('div');
+    starsWrap.className = 'rv-stars';
+    const norm = Math.round(rv.rating);
+    for (let i = 1; i <= 10; i++) {
+      const star = document.createElement('span');
+      star.className = `rv-star${i <= norm ? ' filled' : ''}`;
+      star.textContent = '★';
+      starsWrap.appendChild(star);
+    }
+    const badge = document.createElement('span');
+    badge.className = 'rv-score-badge';
+    badge.textContent = rv.rating;
+    starsWrap.appendChild(badge);
+    authorRow.appendChild(starsWrap);
+  }
+  card.appendChild(authorRow);
+
+  // Text (hiển thị bản VI nếu có, EN nếu chưa dịch)
+  const textEl = document.createElement('div');
+  textEl.className = 'rv-text collapsed';
+  textEl.textContent = rv.viText || rv.text;
+  if (!rv.viText) textEl.classList.add('translating');
+  card.appendChild(textEl);
+
+  // Footer
+  const footer = document.createElement('div');
+  footer.className = 'rv-card-footer';
+
+  const chip = document.createElement('span');
+  chip.className = `rv-source-chip ${isWiki ? 'wiki' : 'tmdb'}`;
+  chip.textContent = isWiki ? 'Wikipedia' : 'TMDB';
+  footer.appendChild(chip);
+
+  const right = document.createElement('div');
+  right.style.cssText = 'display:flex;align-items:center;gap:10px;';
+
+  if (isWiki && rv.wikiPage) {
+    const wlink = document.createElement('a');
+    wlink.className = 'rv-wiki-link';
+    wlink.href = `https://en.wikipedia.org/wiki/${encodeURIComponent(rv.wikiPage)}`;
+    wlink.target = '_blank'; wlink.textContent = '↗ Wiki';
+    right.appendChild(wlink);
+  }
+
+  const expandBtn = document.createElement('button');
+  expandBtn.className = 'rv-expand-btn';
+  expandBtn.textContent = 'Đọc thêm';
+  let expanded = false;
+  expandBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    expanded = !expanded;
+    textEl.className = `rv-text ${expanded ? 'expanded' : 'collapsed'}`;
+    expandBtn.textContent = expanded ? 'Thu gọn' : 'Đọc thêm';
+
+    const track = card.closest('.rv-scroll-track');
+    if (!track) return;
+
+    if (expanded) {
+      // Bỏ line-clamp trên TẤT CẢ card để text fill đầy chiều cao
+      [...track.querySelectorAll('.rv-text')].forEach(t => {
+        t.style.webkitLineClamp = 'unset';
+        t.style.display = 'block';
+      });
+    } else {
+      // Khôi phục line-clamp cho các card chưa expand
+      [...track.querySelectorAll('.rv-text.collapsed')].forEach(t => {
+        t.style.webkitLineClamp = '';
+        t.style.display = '';
+      });
+    }
+  });
+  right.appendChild(expandBtn);
+  footer.appendChild(right);
+  card.appendChild(footer);
+
+  // Method to update text once translated
+  card._setViText = (vi) => {
+    rv.viText = vi;
+    textEl.textContent = vi;
+    textEl.classList.remove('translating');
+  };
+
+  return card;
+}
+
+/* ─── BUILD SCROLL TRACK ───────────────────────────────────── */
+function buildReviewScrollTrack(reviews, container) {
+  container.innerHTML = '';
+  if (!reviews.length) {
+    container.innerHTML = `<div class="rv-empty">😶 Chưa có review nào.</div>`;
+    return;
+  }
+
+  // Nav
+  const nav = document.createElement('div');
+  nav.className = 'rv-scroll-nav';
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'rv-scroll-btn'; prevBtn.textContent = '←'; prevBtn.disabled = true;
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'rv-scroll-btn'; nextBtn.textContent = '→';
+  nav.appendChild(prevBtn); nav.appendChild(nextBtn);
+  container.appendChild(nav);
+
+  // Track
+  const wrap  = document.createElement('div'); wrap.className = 'rv-scroll-wrap';
+  const track = document.createElement('div'); track.className = 'rv-scroll-track';
+  const cards = [];
+  reviews.forEach(rv => {
+    const card = buildReviewCard(rv);
+    cards.push({ card, rv });
+    track.appendChild(card);
+  });
+  wrap.appendChild(track);
+  container.appendChild(wrap);
+
+  // Arrows
+  const CARD_W = 314;
+  prevBtn.addEventListener('click', () => track.scrollBy({ left: -CARD_W * 2, behavior: 'smooth' }));
+  nextBtn.addEventListener('click', () => track.scrollBy({ left:  CARD_W * 2, behavior: 'smooth' }));
+  const updateArrows = () => {
+    prevBtn.disabled = track.scrollLeft <= 4;
+    nextBtn.disabled = track.scrollLeft >= track.scrollWidth - track.clientWidth - 4;
+  };
+  track.addEventListener('scroll', updateArrows, { passive: true });
+  setTimeout(updateArrows, 150);
+
+  // Drag scroll
+  let isDown = false, startX, scrollStart;
+  track.addEventListener('mousedown', e => { isDown = true; startX = e.pageX; scrollStart = track.scrollLeft; });
+  window.addEventListener('mouseup', () => { isDown = false; });
+  track.addEventListener('mousemove', e => {
+    if (!isDown) return; e.preventDefault();
+    track.scrollLeft = scrollStart - (e.pageX - startX);
+  });
+
+  return cards; // trả về để translate sau
+}
+
+/* ─── AUTO TRANSLATE ALL ───────────────────────────────────── */
+async function autoTranslateReviews(cards, badgeEl) {
+  const needTranslate = cards.filter(({ rv }) => !rv.viText);
+  if (!needTranslate.length) return;
+
+  // Progress bar
+  const bar = document.createElement('div');
+  bar.className = 'rv-translate-bar';
+  bar.innerHTML = `<span>🌐 Đang dịch...</span><div class="rv-translate-bar-track"><div class="rv-translate-bar-fill" id="rv-bar-fill"></div></div><span id="rv-bar-pct">0%</span>`;
+  // Insert before track's parent
+  const trackParent = cards[0]?.card?.closest('.rv-scroll-wrap')?.parentElement;
+  if (trackParent) trackParent.insertBefore(bar, trackParent.querySelector('.rv-scroll-nav'));
+
+  let done = 0;
+  const updateBar = () => {
+    done++;
+    const pct = Math.round((done / needTranslate.length) * 100);
+    const fill = document.getElementById('rv-bar-fill');
+    const pctEl = document.getElementById('rv-bar-pct');
+    if (fill)  fill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
+    if (done >= needTranslate.length) {
+      setTimeout(() => bar.remove(), 600);
+      if (badgeEl) badgeEl.textContent = `${cards.length} reviews · VI`;
+    }
+  };
+
+  // Translate 3 cái song song để nhanh hơn
+  const BATCH = 3;
+  for (let i = 0; i < needTranslate.length; i += BATCH) {
+    const batch = needTranslate.slice(i, i + BATCH);
+    await Promise.all(batch.map(async ({ card, rv }) => {
+      const vi = await translateToVi(rv.text);
+      if (vi && card._setViText) card._setViText(vi);
+      updateBar();
+    }));
+  }
+}
+
+/* ─── MAIN ENTRY ───────────────────────────────────────────── */
+async function renderReviewSection(container, movie) {
+  injectReviewCSS();
+
+  const section = document.createElement('div');
+  section.className = 'rv-section';
+
+  // Header
+  const badgeId = `rv-badge-${movie.tmdb_id || (movie.title || '').replace(/\s/g,'-')}`;
+  const header  = document.createElement('div');
+  header.className = 'rv-header open';
+  header.innerHTML = `
+    <div class="rv-header-left">
+      <span class="rv-header-icon">📝</span>
+      <span class="rv-header-title">Reviews & Đánh giá</span>
+      <span class="rv-header-badge" id="${badgeId}">Đang tải...</span>
+    </div>
+    <span class="rv-chevron">▲</span>
+  `;
+
+  const body = document.createElement('div');
+  body.className = 'rv-body open';
+
+  header.addEventListener('click', () => {
+    const open = body.classList.toggle('open');
+    header.classList.toggle('open', open);
+    header.querySelector('.rv-chevron').textContent = open ? '▲' : '▼';
+  });
+
+  // Loading placeholder
+  const loader = document.createElement('div');
+  loader.className = 'rv-loading';
+  loader.innerHTML = `<div class="rv-spinner"></div><span>Đang tải reviews...</span>`;
+  body.appendChild(loader);
+
+  section.appendChild(header);
+  section.appendChild(body);
+  container.appendChild(section);
+
+  // ── Fetch ─────────────────────────────────────────────────
+  const [tmdbRevs, wikiRev] = await Promise.all([
+    fetchTMDBReviews(movie),
+    fetchWikiReception(movie),
+  ]);
+
+  // Gộp: Wiki lên đầu (nếu có) rồi đến TMDB
+  const allReviews = [...(wikiRev ? [wikiRev] : []), ...tmdbRevs];
+
+  const badge = document.getElementById(badgeId);
+  if (badge) badge.textContent = allReviews.length ? `${allReviews.length} reviews` : 'Chưa có';
+
+  body.innerHTML = '';
+
+  if (!allReviews.length) {
+    body.innerHTML = `<div class="rv-empty">😶 Chưa có review nào cho phim này.</div>`;
+    return;
+  }
+
+  // Build track — trả về cards để translate
+  const cards = buildReviewScrollTrack(allReviews, body);
+
+  // Auto-translate background
+  if (cards) autoTranslateReviews(cards, badge);
 }
