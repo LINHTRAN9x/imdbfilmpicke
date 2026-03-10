@@ -5516,6 +5516,7 @@ async function loadScreeningRoomWithOffset(offset) {
     movie: w.movie,
     date: w.date.toISOString(),
   }))};
+  const weekKey = `${monday.getFullYear()}-${monday.getMonth()+1}-${monday.getDate()}`;
   STATE._srRerollWeek = weekKey;
   saveConfig();
 
@@ -11182,3 +11183,442 @@ async function renderReviewSection(container, movie) {
   // Auto-translate background
   if (cards) autoTranslateReviews(cards, badge);
 }
+
+
+/* ══════════════════════════════════════════════════════════════
+   📰  NEWSPAPER ARTICLE PAGE — Deep Edition
+   CSS đã tách sang article.css — nhớ thêm vào HTML:
+   <link rel="stylesheet" href="article.css">
+══════════════════════════════════════════════════════════════ */
+
+/* ─── HELPERS ──────────────────────────────────────────────── */
+function npaTranslate(text) {
+  if (!text || text.trim().length < 5) return Promise.resolve(text);
+  return fetch(
+    `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=vi&dt=t&q=${encodeURIComponent(text.slice(0, 10000))}`
+  ).then(r => r.json())
+   .then(d => (d[0] || []).map(s => s?.[0] || '').join(''))
+   .catch(() => text);
+}
+
+function npaStars(r) {
+  const n = parseFloat(r) || 0;
+  return n >= 9 ? '★★★★★' : n >= 7.5 ? '★★★★½' : n >= 7 ? '★★★★☆'
+       : n >= 6 ? '★★★☆☆' : n >= 5 ? '★★½☆☆' : '★★☆☆☆';
+}
+function npaVerdict(r) {
+  const n = parseFloat(r) || 0;
+  return n >= 8.5 ? 'Kiệt tác không thể bỏ qua — một tác phẩm định nghĩa thế hệ.'
+       : n >= 7.5 ? 'Xuất sắc, đầy dư vị — xứng đáng mọi lời khen ngợi.'
+       : n >= 7   ? 'Đáng xem, để lại nhiều suy ngẫm sau khi đèn rạp tắt.'
+       : n >= 6   ? 'Tròn vai, đáng một lần thưởng thức dù chưa thực sự đột phá.'
+       : n >= 5   ? 'Có điểm sáng nhưng chưa đủ để thuyết phục hoàn toàn.'
+       :            'Dành cho khán giả thực sự dễ tính.';
+}
+
+/* ─── SIDEBAR DOM ─────────────────────────────────────────── */
+function buildArticleSidebar(movie, crew, keywords, detailData) {
+  const aside = document.createElement('aside');
+  aside.className = 'npa-sidebar';
+
+  // Poster
+  const posterWrap = document.createElement('div');
+  posterWrap.className = 'npa-poster-wrap';
+  if (movie.poster) {
+    posterWrap.innerHTML = `<img src="${movie.poster}" alt="${movie.title}" />`;
+  } else {
+    posterWrap.innerHTML = `<div class="npa-poster-no">🎬</div>`;
+  }
+  aside.appendChild(posterWrap);
+
+  // Info box
+  const info = document.createElement('div');
+  info.className = 'npa-info-box';
+  info.innerHTML = `<div class="npa-info-box-title">Thông Tin Phim</div>`;
+  const infoRows = [
+    ['Tên phim', movie.title],
+    ['Năm',      movie.year || 'N/A'],
+    ['Thể loại', (movie.genre || 'N/A').split(',').slice(0,2).join(', ')],
+    ['Đánh giá', `⭐ ${movie.rating}/10`],
+    detailData?.runtime ? ['Thời lượng', `${Math.floor(detailData.runtime/60)}h ${detailData.runtime%60}m`] : null,
+    detailData?.budget  ? ['Kinh phí',   `$${(detailData.budget/1e6).toFixed(0)}M`] : null,
+    detailData?.revenue ? ['Doanh thu',  `$${(detailData.revenue/1e6).toFixed(0)}M`] : null,
+    detailData?.status  ? ['Trạng thái', detailData.status] : null,
+    detailData?.production_countries?.length
+      ? ['Quốc gia', detailData.production_countries.slice(0,2).map(c=>c.name).join(', ')] : null,
+  ].filter(Boolean);
+  infoRows.forEach(([label, value]) => {
+    const row = document.createElement('div');
+    row.className = 'npa-info-row';
+    row.innerHTML = `<span class="npa-info-label">${label}</span><span class="npa-info-value">${sanitize(String(value))}</span>`;
+    info.appendChild(row);
+  });
+  aside.appendChild(info);
+
+  // Crew box
+  if (crew.length) {
+    const crewBox = document.createElement('div');
+    crewBox.className = 'npa-crew-box';
+    crewBox.innerHTML = `<div class="npa-crew-box-title">Đoàn Làm Phim</div>`;
+    const grouped = {};
+    crew.forEach(p => { (grouped[p.job] = grouped[p.job] || []).push(p.name); });
+    Object.entries(grouped).forEach(([job, names]) => {
+      const row = document.createElement('div');
+      row.className = 'npa-crew-row';
+      row.innerHTML = `<div class="npa-crew-job">${job}</div><div class="npa-crew-name">${sanitize(names.join(', '))}</div>`;
+      crewBox.appendChild(row);
+    });
+    aside.appendChild(crewBox);
+  }
+
+  // Keywords
+  if (keywords.length) {
+    const kwBox = document.createElement('div');
+    kwBox.className = 'npa-keywords';
+    kwBox.innerHTML = `<div class="npa-keywords-title">Chủ Đề</div><div class="npa-keywords-body">
+      ${keywords.map(k => `<span class="npa-keyword-tag">${sanitize(k)}</span>`).join('')}
+    </div>`;
+    aside.appendChild(kwBox);
+  }
+
+  // Detail btn
+  const detBtn = document.createElement('button');
+  detBtn.className = 'npa-detail-btn';
+  detBtn.textContent = '🎬 Xem Chi Tiết Đầy Đủ';
+  detBtn.addEventListener('click', () => {
+    document.getElementById('np2-article-overlay')?.remove();
+    showDetailPage(movie);
+  });
+  aside.appendChild(detBtn);
+
+  return aside;
+}
+
+/* ─── MAIN ARTICLE CONTENT BUILDERS ─────────────────────── */
+async function buildMainContent(movie, stepFn) {
+  const mt = movie.mediaType || 'movie';
+  const id = movie.tmdb_id;
+
+  stepFn('📡 Đang tải dữ liệu phim...');
+  let crew = [], backdrops = [], keywords = [], detailData = null, tmdbReviews = [];
+  let wikiData = { intro:'', plot:'', production:'', reception:'' };
+  let wikiTitle = '';
+
+  await Promise.all([
+    // TMDB
+    (async () => {
+      if (!id || !STATE.tmdbKey) return;
+      try {
+        const [credits, images, detail, kw, reviews] = await Promise.all([
+          tmdb(`/${mt}/${id}/credits`),
+          tmdb(`/${mt}/${id}/images`),
+          tmdb(`/${mt}/${id}`, { append_to_response: 'release_dates' }),
+          tmdb(`/${mt}/${id}/keywords`),
+          tmdb(`/${mt}/${id}/reviews`),
+        ]);
+        crew = (credits.crew || [])
+          .filter(p => ['Director','Producer','Executive Producer','Screenplay','Writer','Story'].includes(p.job))
+          .slice(0, 10);
+        backdrops = (images.backdrops || [])
+          .sort((a,b) => b.vote_average - a.vote_average)
+          .slice(0, 6).map(b => `${TMDB_IMG}/w780${b.file_path}`);
+        keywords = (kw.keywords || kw.results || []).slice(0, 12).map(k => k.name);
+        detailData = detail;
+        tmdbReviews = (reviews.results || []).slice(0, 4);
+        if (detail.overview && detail.overview.length > (movie.description || '').length) {
+          movie._fullOverview = detail.overview;
+        }
+      } catch(e) {}
+    })(),
+
+    // Wikipedia
+    (async () => {
+      try {
+        const searchRes = await fetch(
+          `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(movie.title + ' film ' + (movie.year||''))}&srlimit=3&format=json&origin=*`
+        );
+        const pages = (await searchRes.json()).query?.search || [];
+        const best = pages.find(p => p.title.toLowerCase().includes(movie.title.toLowerCase())) || pages[0];
+        if (!best) return;
+        wikiTitle = best.title;
+
+        const [secRes, introRes] = await Promise.all([
+          fetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(wikiTitle)}&prop=sections&format=json&origin=*`),
+          fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=true&explaintext=true&titles=${encodeURIComponent(wikiTitle)}&format=json&origin=*`),
+        ]);
+        const sections = (await secRes.json()).parse?.sections || [];
+        const introPages = (await introRes.json()).query?.pages || {};
+        wikiData.intro = (Object.values(introPages)[0]?.extract || '').slice(0, 2000);
+
+        const WANTED = {
+          plot: ['plot','synopsis','story'],
+          production: ['production','development','filming','writing','conception'],
+          reception: ['reception','critical reception','critical response','box office','accolades','awards'],
+        };
+        const sectionFetches = {};
+        sections.forEach(sec => {
+          const line = sec.line.toLowerCase();
+          for (const [key, terms] of Object.entries(WANTED)) {
+            if (terms.some(t => line.includes(t)) && !sectionFetches[key]) {
+              sectionFetches[key] = sec.index;
+            }
+          }
+        });
+        await Promise.all(Object.entries(sectionFetches).map(async ([key, idx]) => {
+          try {
+            const r = await fetch(
+              `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(wikiTitle)}&prop=wikitext&section=${idx}&format=json&origin=*`
+            );
+            const raw = (await r.json()).parse?.wikitext?.['*'] || '';
+            const clean = raw
+              // Remove templates (lặp để xử lý lồng nhau)
+              .replace(/\{\{[^{}]*\}\}/g, '').replace(/\{\{[^{}]*\}\}/g, '').replace(/\{\{[^{}]*\}\}/g, '')
+              .replace(/\{\{[\s\S]*?\}\}/g, '')
+              // Xóa }} {{ thừa
+              .replace(/\}{2,}/g, '')
+              .replace(/\{{2,}/g, '')
+              // Xóa [[ ]] thừa
+              .replace(/\[{2,}/g, '')
+              .replace(/\]{2,}/g, '')
+              // Pipe artifacts
+              .replace(/\|[^|\n]*/g, '')
+              .replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, '$1')
+              .replace(/\[https?:\/\/[^\s\]]*\s?([^\]]*)\]/g, '$1')
+              .replace(/'{2,5}/g, '')
+              .replace(/==+[^=]*==+/g, '')
+              .replace(/<ref[\s\S]*?(?:\/|<\/ref)>/gi, '')
+              .replace(/<ref[^>]*\/>/gi, '')
+              .replace(/<[^>]+>/g, '')
+              // Dòng có markup thừa
+              .replace(/^\s*[\*#:;|!{}\]\[]+.*$/gm, '')
+              // Artifact còn sót
+              .replace(/\s*\}\}+\s*/g, ' ')
+              .replace(/\s*\{\{+\s*/g, ' ')
+              .replace(/\s*\[\[+\s*/g, ' ')
+              .replace(/\s*\]\]+\s*/g, ' ')
+              // Khoảng trắng
+              .replace(/[ \t]{2,}/g, ' ')
+              .replace(/\n{3,}/g, '\n\n').trim().slice(0, 5500);
+            if (clean.length > 100) wikiData[key] = clean;
+          } catch(e) {}
+        }));
+      } catch(e) {}
+    })(),
+  ]);
+
+  // Translate
+  stepFn('🌐 Đang dịch sang tiếng Việt...');
+  const desc = movie._fullOverview || movie.description || '';
+  const [introVi, descVi, plotVi, productionVi, receptionVi, ...reviewVis] = await Promise.all([
+    npaTranslate(wikiData.intro),
+    npaTranslate(desc),
+    npaTranslate(wikiData.plot),
+    npaTranslate(wikiData.production),
+    npaTranslate(wikiData.reception),
+    ...tmdbReviews.map(r => npaTranslate(r.content || '')),
+  ]);
+
+  const ratingNum = parseFloat(movie.rating) || 0;
+  const companyLine = (detailData?.production_companies || []).slice(0,3).map(c=>c.name).join(' · ') || '';
+
+  let html = '';
+
+  // Opening paragraph (drop cap)
+  const openingText = (introVi && introVi.length > 100 ? introVi : descVi) || '';
+  const firstDot = openingText.search(/[.!?]\s/);
+  const firstSentence = firstDot > 0 ? openingText.slice(0, firstDot + 1) : openingText.slice(0, 2000);
+  const restOpening  = firstDot > 0 ? openingText.slice(firstDot + 2) : '';
+  if (firstSentence) {
+    html += `<p class="npa-drop-cap">${sanitize(firstSentence)}</p>`;
+    if (restOpening) html += `<p>${sanitize(restOpening.slice(0, 6000))}</p>`;
+  }
+
+  // Plot
+  if (plotVi && plotVi.length > 100) {
+    html += `<h3>Nội Dung Phim</h3>`;
+    plotVi.split(/\n\n+/).filter(p => p.trim().length > 40).slice(0, 3)
+      .forEach(p => { html += `<p>${sanitize(p.trim())}</p>`; });
+  }
+
+  // Pull quote
+  const pullText = reviewVis[0] && reviewVis[0].length > 60
+    ? reviewVis[0].slice(0, 180).trim()
+    : npaVerdict(movie.rating);
+  const pullAuthor = tmdbReviews[0]?.author ? `— ${tmdbReviews[0].author}, TMDB` : '— The Film Gazette';
+  html += `<div class="npa-pull-quote">${sanitize(pullText)}<cite>${pullAuthor}</cite></div>`;
+
+  // Production
+  if (productionVi && productionVi.length > 100) {
+    html += `<h3>Quá Trình Sản Xuất</h3>`;
+    productionVi.split(/\n\n+/).filter(p => p.trim().length > 40).slice(0, 3)
+      .forEach(p => { html += `<p>${sanitize(p.trim())}</p>`; });
+    if (companyLine) {
+      html += `<p style="font-size:.82rem;color:#5a4a32;font-style:italic;">Sản xuất bởi: ${sanitize(companyLine)}</p>`;
+    }
+  }
+
+  // Gallery
+  if (backdrops.length >= 2) {
+    html += `<h3>Hình Ảnh Từ Phim</h3>
+      <div class="npa-gallery">
+        ${backdrops.slice(0,6).map(url => `
+          <div class="npa-gallery-thumb" onclick="window.open('${url}','_blank')">
+            <img src="${url}" loading="lazy" />
+          </div>`).join('')}
+      </div>
+      <p class="npa-gallery-caption">Hình ảnh từ ${sanitize(movie.title)} — TMDB</p>`;
+  }
+
+  // Critical reception
+  if (receptionVi && receptionVi.length > 100) {
+    html += `<h3>Phản Hồi Từ Giới Phê Bình</h3>`;
+    receptionVi.split(/\n\n+/).filter(p => p.trim().length > 400).slice(0, 4)
+      .forEach((p, i) => {
+        if (i === 1) {
+          html += `<blockquote>${sanitize(p.trim())}<cite>Wikipedia — Critical Reception</cite></blockquote>`;
+        } else {
+          html += `<p>${sanitize(p.trim())}</p>`;
+        }
+      });
+  }
+
+  // Audience reviews
+  if (reviewVis.length > 1) {
+    html += `<h3>Đánh Giá Từ Khán Giả</h3>`;
+    reviewVis.slice(1, 4).forEach((rv, i) => {
+      if (!rv || rv.length < 30) return;
+      const r = tmdbReviews[i + 1];
+      const rating = r?.author_details?.rating ? ` · ⭐ ${r.author_details.rating}/10` : '';
+      html += `<blockquote>${sanitize(rv.slice(0, 10000))}<cite>— ${sanitize(r?.author || 'Khán giả')}${rating} · TMDB</cite></blockquote>`;
+    });
+  }
+
+  // Verdict
+  html += `
+    <hr class="npa-section-rule">
+    <div class="npa-verdict">
+      <div class="npa-verdict-label">Verdict của The Film Gazette</div>
+      <div class="npa-verdict-stars">${npaStars(movie.rating)}</div>
+      <div class="npa-verdict-text">${npaVerdict(movie.rating)}</div>
+      <div class="npa-verdict-score">Điểm TMDB: ${movie.rating}/10 · ${movie.year || ''} · ${(movie.genre||'').split(',')[0]}</div>
+      <div class="npa-rating-bar-wrap">
+        <div class="npa-rating-bar-fill" id="npa-bar-fill" style="width:0%;background:${ratingBg(movie.rating)}"></div>
+      </div>
+    </div>`;
+
+  // Source footer
+  const sources = [];
+  if (wikiTitle) sources.push(`<a href="https://en.wikipedia.org/wiki/${encodeURIComponent(wikiTitle)}" target="_blank">Wikipedia</a>`);
+  sources.push('TMDB');
+  html += `<p class="npa-source-footer">📚 Nguồn: ${sources.join(' · ')}</p>`;
+
+  setTimeout(() => {
+    const fill = document.getElementById('npa-bar-fill');
+    if (fill) fill.style.width = (ratingNum * 10) + '%';
+  }, 400);
+
+  return { html, crew, keywords, detailData, backdrops };
+}
+
+/* ─── MAIN OPEN FUNCTION ────────────────────────────────── */
+async function openNewspaperArticle(movie) {
+  document.getElementById('np2-article-overlay')?.remove();
+
+  const today = new Date().toLocaleDateString('vi-VN', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+  const todayShort = new Date().toLocaleDateString('vi-VN', { day:'numeric', month:'long', year:'numeric' });
+
+  const overlay = document.createElement('div');
+  overlay.id = 'np2-article-overlay';
+  overlay.className = 'np2-article-overlay';
+  overlay.innerHTML = `
+    <div class="np2-article-topbar">
+      <button class="np2-article-back" id="npa-back-btn">← Quay lại tờ báo</button>
+      <span class="np2-article-topbar-title">THE FILM GAZETTE</span>
+      <span class="np2-article-date">${todayShort}</span>
+    </div>
+    <div class="np2-article-page">
+      <div class="npa-header">
+        <div class="npa-kicker">Phê Bình Điện Ảnh · The Film Gazette</div>
+        <h1 class="npa-headline">${sanitize(movie.title)}</h1>
+        <div class="npa-deck">${sanitize(movie.description || '').slice(0, 180)}${movie.description?.length > 180 ? '…' : ''}</div>
+        <div class="npa-byline-bar">
+          <div class="npa-byline-left">
+            <span class="npa-byline-author">Ban Biên Tập TFG</span>
+            <span class="npa-byline-divider">✦</span>
+            <span>${today}</span>
+          </div>
+          <span class="npa-rating-pill">⭐ ${movie.rating}/10</span>
+        </div>
+      </div>
+
+      <div class="npa-lead-image" id="npa-lead-image"></div>
+
+      <div id="npa-loading" class="npa-loading">
+        <div class="npa-loading-icon">✍️</div>
+        <div class="npa-loading-title">Phóng viên đang soạn bài...</div>
+        <div class="npa-loading-step" id="npa-load-step">Đang tải dữ liệu...</div>
+        <div class="npa-loading-spinner"></div>
+      </div>
+
+      <div class="npa-body" id="npa-body" style="display:none">
+        <div class="npa-main" id="npa-main"></div>
+        <div id="npa-sidebar-wrap"></div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('np2-overlay-in'));
+
+  overlay.querySelector('#npa-back-btn').addEventListener('click', () => {
+    overlay.classList.add('np2-overlay-out');
+    setTimeout(() => overlay.remove(), 350);
+  });
+
+  const leadEl = overlay.querySelector('#npa-lead-image');
+  const stepFn = (msg) => {
+    const el = document.getElementById('npa-load-step');
+    if (el) el.textContent = msg;
+  };
+
+  try {
+    const { html, crew, keywords, detailData, backdrops } = await buildMainContent(movie, stepFn);
+
+    if (backdrops.length) {
+      leadEl.innerHTML = `
+        <img src="${backdrops[0]}" alt="${sanitize(movie.title)}" />
+        <div class="npa-lead-caption">Cảnh trong phim <em>${sanitize(movie.title)}</em> (${movie.year}) · Ảnh: TMDB</div>`;
+    } else {
+      leadEl.remove();
+    }
+
+    document.getElementById('npa-main').innerHTML = html;
+    document.getElementById('npa-sidebar-wrap').appendChild(
+      buildArticleSidebar(movie, crew, keywords, detailData)
+    );
+
+    document.getElementById('npa-loading').remove();
+    const body = document.getElementById('npa-body');
+    body.style.display = '';
+    body.querySelectorAll('p, h3, blockquote, .npa-verdict, .npa-gallery, .npa-pull-quote').forEach((el, i) => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(10px)';
+      el.style.transition = `opacity .35s ease ${i * 40}ms, transform .35s ease ${i * 40}ms`;
+      setTimeout(() => { el.style.opacity = '1'; el.style.transform = 'none'; }, 50 + i * 40);
+    });
+
+  } catch(e) {
+    document.getElementById('npa-loading').innerHTML = `
+      <div class="npa-loading-icon">⚠️</div>
+      <div class="npa-loading-title">Không thể tải bài viết</div>
+      <div class="npa-loading-step">${e.message}</div>`;
+  }
+}
+
+// Stubs để không break code cũ
+function buildArticleFromWiki(w, t, m)  { return openNewspaperArticle(m); }
+function buildArticleFromTMDB(r, m)     { return openNewspaperArticle(m); }
+function buildArticleFromDescription(m) { return openNewspaperArticle(m); }
+function generateArticleWithClaude(p, m){ return openNewspaperArticle(m); }
+function wrapArticle(h, s)              { return h; }
