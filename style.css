@@ -1,7 +1,7 @@
 /* ════════════════════════════════════════════
    IMDb What to Watch — style.css
    ════════════════════════════════════════════ */
-
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400;1,600&family=UnifrakturMaguntia&family=DM+Sans:wght@400;600;700&display=swap');
 /* ── VARIABLES ── */
 :root {
   --bg: #0a0a12;
@@ -2240,7 +2240,7 @@ img { display: block; }
   to   { opacity:1; transform: none; }
 }
 .np2-mast-subtitle {
-  font-family: 'IM Fell English', serif;
+  font-family: 'Crimson Pro', serif;
   font-size: 0.82rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -2248,7 +2248,7 @@ img { display: block; }
   margin-bottom: 8px;
 }
 .np2-mast-quote {
-  font-family: 'IM Fell English', serif;
+  font-family: 'Crimson Pro', serif;
   font-style: italic;
   font-size: 0.88rem;
   color: var(--gray);
@@ -2743,7 +2743,7 @@ img { display: block; }
 }
 .np2-footer-title { font-family: 'UnifrakturMaguntia', serif; font-size: 1.6rem; color: var(--accent); }
 .np2-footer-sub { font-size: 0.72rem; color: var(--gray); margin-top: 2px; }
-.np2-footer-center { font-family: 'IM Fell English', serif; font-size: 0.82rem; color: var(--gray); text-align: center; font-style: italic; line-height: 1.6; }
+.np2-footer-center { font-family: 'Crimson Pro', serif; font-size: 0.82rem; color: var(--gray); text-align: center; font-style: italic; line-height: 1.6; }
 .np2-refresh-btn {
   background: transparent;
   border: 1px solid var(--border);
@@ -2844,7 +2844,7 @@ img { display: block; }
   margin-bottom: 10px;
 }
 .np2-art-subtitle {
-  font-family: 'IM Fell English', serif;
+  font-family: 'Crimson Pro', serif;
   font-size: 1rem;
   font-style: italic;
   color: var(--gray);
@@ -5708,5 +5708,88 @@ img { display: block; }
 }
 @keyframes npa-spin { to { transform: rotate(360deg); } }
 
+.modal-api-section {
+  margin-bottom: 4px;
+}
+.modal-api-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.modal-api-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.modal-api-label > div { flex: 1; }
+.modal-api-label strong { font-size: .9rem; }
+.modal-btn.sm {
+  font-size: .65rem;
+  padding: 4px 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.modal-divider {
+  height: 1px;
+  background: rgba(255,255,255,.08);
+  margin: 12px 0;
+}
 
+.detail-ratings-box {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 10px 0 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.detail-rating-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-right: 1px solid rgba(255,255,255,.08);
+  flex-direction: row;
+}
+.detail-rating-pill:last-child { border-right: none; }
+
+.detail-rating-pill.tmdb { background: #0d1f35; }
+.detail-rating-pill.imdb { background: #1a1400; cursor: pointer; transition: background .15s; }
+.detail-rating-pill.imdb:hover { background: #252000; }
+.detail-rating-pill.meta { background: #0d1a0d; }
+.detail-rating-pill.rt   { background: #1a0d0d; }
+
+.drp-source {
+  font-size: .6rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  opacity: .5;
+  color: #fff;
+  white-space: nowrap;
+}
+.detail-rating-pill.tmdb .drp-source { color: #01b4e4; opacity: 1; }
+.detail-rating-pill.imdb .drp-source { color: #f5c518; opacity: 1; }
+.detail-rating-pill.meta .drp-source { color: #6ac174; opacity: 1; }
+.detail-rating-pill.rt   .drp-source { color: #fa320a; opacity: 1; }
+
+.drp-score {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+.drp-max {
+  font-size: .6rem;
+  color: rgba(255,255,255,.3);
+  font-weight: 400;
+}
+.drp-votes {
+  font-size: .6rem;
+  color: rgba(255,255,255,.25);
+}
 

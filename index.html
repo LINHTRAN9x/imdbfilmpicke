@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Film Gazette – Khám Phá & Phê Bình Điện Ảnh</title>
   <meta name="description" content="Khám phá phim hay, đọc phê bình điện ảnh chuyên sâu, theo dõi lịch chiếu rạp và xu hướng phim mới nhất." />
   <meta name="keywords" content="phim hay, phê bình phim, điện ảnh, xem phim, rạp chiếu phim, TMDB, phim trending, phim mới" />
   <meta name="author" content="The Film Gazette" />
@@ -298,12 +297,37 @@
 <!-- ══════════════════════════════════ TMDB KEY MODAL ══════════════════════════════════ -->
 <div id="tmdb-modal" class="modal-overlay hidden">
   <div class="modal-box">
-    <h3>🔑 TMDB API Key</h3>
-    <p class="modal-sub">Đăng ký miễn phí: <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org → Settings → API</a></p>
-    <p class="modal-hint">Poster sẽ hiển thị nhanh hơn rất nhiều</p>
-    <input id="tmdb-key-input" type="text" placeholder="Nhập TMDB API Key..." />
+    <h3>🔑 API Keys</h3>
+
+    <!-- TMDB -->
+    <div class="modal-api-section">
+      <div class="modal-api-label">
+        <span class="modal-api-icon">🎬</span>
+        <div>
+          <strong>TMDB API Key</strong>
+          <p class="modal-sub">Đăng ký miễn phí tại <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org</a></p>
+        </div>
+        <a href="https://www.themoviedb.org/settings/api" target="_blank" class="modal-btn secondary sm">🌐 Lấy key</a>
+      </div>
+      <input id="tmdb-key-input" type="text" placeholder="Nhập TMDB API Key..." />
+    </div>
+
+    <div class="modal-divider"></div>
+
+    <!-- OMDB -->
+    <div class="modal-api-section">
+      <div class="modal-api-label">
+        <span class="modal-api-icon">⭐</span>
+        <div>
+          <strong>OMDB API Key</strong>
+          <p class="modal-sub">IMDb rating + Metascore · 1000 req/ngày miễn phí tại <a href="https://www.omdbapi.com/apikey.aspx" target="_blank">omdbapi.com</a></p>
+        </div>
+        <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" class="modal-btn secondary sm">🌐 Lấy key</a>
+      </div>
+      <input id="omdb-key-input" type="text" placeholder="Nhập OMDB API Key... (tuỳ chọn)" />
+    </div>
+
     <div class="modal-btns">
-      <a href="https://www.themoviedb.org/settings/api" target="_blank" class="modal-btn secondary">🌐 Lấy key</a>
       <button id="btn-save-key" class="modal-btn primary">💾 Lưu</button>
       <button id="btn-cancel-key" class="modal-btn ghost">✕ Hủy</button>
     </div>

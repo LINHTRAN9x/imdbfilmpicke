@@ -192,6 +192,7 @@ function loadStorage() {
   try {
     const cfg = JSON.parse(localStorage.getItem('imdb_config') || '{}');
     STATE.tmdbKey        = cfg.tmdbKey        || '';
+    STATE.omdbKey        = cfg.omdbKey  || '';
     STATE.theme          = cfg.theme          || 'dark';
     STATE.filterMode     = cfg.filterMode     || 'filter';
     STATE.decade         = cfg.decade         || STATE.decade;
@@ -234,7 +235,7 @@ function getUserSeed() {
 
 function saveConfig() {
   const cfg = {
-    tmdbKey: STATE.tmdbKey, theme: STATE.theme, filterMode: STATE.filterMode,
+    tmdbKey: STATE.tmdbKey, omdbKey: STATE.omdbKey, theme: STATE.theme, filterMode: STATE.filterMode,
     decade: STATE.decade, genre: STATE.genre, sort: STATE.sort,
     rating: STATE.rating, type: STATE.type, language: STATE.language,
     count: STATE.count, staticSrc: STATE.staticSrc,
@@ -458,6 +459,16 @@ async function loadMoreStatic() {
 
 async function fetchMovieDetail(movie) {
   const cacheKey = movie.tmdb_id || movie.imdb_id || movie.title;
+  // Invalidate cache nếu có omdbKey nhưng cache chưa có imdbRating
+  if (STATE.detailCache[cacheKey]?._full && 
+      STATE.omdbKey && 
+      STATE.detailCache[cacheKey].imdbRating === undefined) {
+    delete STATE.detailCache[cacheKey];
+  }
+  
+  if (STATE.detailCache[cacheKey]?._full) {
+    return STATE.detailCache[cacheKey];
+  }
   if (STATE.detailCache[cacheKey] && STATE.detailCache[cacheKey]._full) {
     return STATE.detailCache[cacheKey];
   }
@@ -556,7 +567,27 @@ async function fetchMovieDetail(movie) {
     };
 
     STATE.detailCache[cacheKey] = detail;
+
+    // OMDB ratings
+    if (extIds.imdb_id && STATE.omdbKey) {
+      try {
+        const omdbRes = await fetch(`https://www.omdbapi.com/?i=${extIds.imdb_id}&apikey=${STATE.omdbKey}`);
+        const omdbData = await omdbRes.json();
+        if (omdbData.Response !== 'False') {
+          detail.imdbRating = omdbData.imdbRating !== 'N/A' ? omdbData.imdbRating : null;
+          detail.imdbVotes  = omdbData.imdbVotes  !== 'N/A' ? omdbData.imdbVotes  : null;
+          detail.metascore  = omdbData.Metascore  !== 'N/A' ? omdbData.Metascore  : null;
+          detail.rtScore    = (omdbData.Ratings||[]).find(r => r.Source === 'Rotten Tomatoes')?.Value || null;
+        }
+      } catch(e) {
+        console.error('[OMDB] Error:', e);
+      }
+    }
+
+    STATE.detailCache[cacheKey] = detail;
     return detail;
+
+    
   } catch(e) {
     console.warn('[fetchMovieDetail]', e);
     return {};
@@ -758,7 +789,7 @@ function getGenreColor(genreStr) {
 
 function sanitize(str) {
   const d = document.createElement('div');
-  d.textContent = str || '';
+  d.textContent = (str || '').normalize('NFC'); 
   return d.innerHTML;
 }
 
@@ -1193,6 +1224,8 @@ async function showDetailPage(movie) {
   if (detail.imdb_id) { movie.imdb_id = detail.imdb_id; movie.url = `https://www.imdb.com/title/${detail.imdb_id}/`; }
   if (detail.genres) movie.genre = detail.genres;
 
+  const omdb = await fetchOmdbRating(movie.imdb_id || detail.imdb_id);
+
   renderDetailBody(body, movie, detail);
 }
 
@@ -1301,6 +1334,55 @@ function renderDetailBody(body, m, d) {
   genres.forEach(g => { const t = el('span','detail-genre-tag',g); t.style.background=getGenreColor(g.toLowerCase()); genreTags.appendChild(t); });
   metaRow.appendChild(genreTags);
   right.appendChild(metaRow);
+
+  // ← Thêm: Ratings box ngay sau metaRow
+  if (d.imdbRating || d.metascore || d.rtScore) {
+    const ratingsBox = el('div', 'detail-ratings-box');
+
+    // TMDB
+    const tmdbPill = el('div', 'detail-rating-pill tmdb');
+    tmdbPill.innerHTML = `
+      <span class="drp-source">TMDB</span>
+      <span class="drp-score">${m.rating}<span class="drp-max">/10</span></span>
+      <span class="drp-votes">${d.votes || ''}</span>`;
+    ratingsBox.appendChild(tmdbPill);
+
+    // IMDb
+    if (d.imdbRating) {
+      const imdbPill = el('div', 'detail-rating-pill imdb');
+      imdbPill.innerHTML = `
+        <span class="drp-source">IMDb</span>
+        <span class="drp-score">${d.imdbRating}<span class="drp-max">/10</span></span>
+        <span class="drp-votes">${d.imdbVotes || ''}</span>`;
+      if (m.url) imdbPill.style.cursor = 'pointer';
+      imdbPill.addEventListener('click', () => m.url && window.open(m.url, '_blank'));
+      ratingsBox.appendChild(imdbPill);
+    }
+
+    // Metascore
+    if (d.metascore) {
+      const score = parseInt(d.metascore);
+      const metaColor = score >= 61 ? '#6ac174' : score >= 40 ? '#ffbd3f' : '#ff6b6b';
+      const metaPill = el('div', 'detail-rating-pill meta');
+      metaPill.innerHTML = `
+        <span class="drp-source">Metascore</span>
+        <span class="drp-score" style="color:${metaColor}">${d.metascore}<span class="drp-max">/100</span></span>`;
+      ratingsBox.appendChild(metaPill);
+    }
+
+    // Rotten Tomatoes
+    if (d.rtScore) {
+      const pct = parseInt(d.rtScore);
+      const rtEmoji = pct >= 60 ? '🍅' : '🤢';
+      const rtPill = el('div', 'detail-rating-pill rt');
+      rtPill.innerHTML = `
+        <span class="drp-source">Rotten Tomatoes</span>
+        <span class="drp-score">${rtEmoji} ${d.rtScore}</span>`;
+      ratingsBox.appendChild(rtPill);
+    }
+
+    right.appendChild(ratingsBox);
+  }
 
   // Description
   const descEl = el('p', 'detail-desc', desc || 'Đang tải mô tả...');
@@ -3258,11 +3340,12 @@ function onDecadeChange() {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   SECTION 20 — TMDB KEY MODAL
+   SECTION 20 — TMDB + OMDB KEY MODAL
 ══════════════════════════════════════════════════════════════ */
 
 function openTmdbModal() {
-  $('tmdb-key-input').value = STATE.tmdbKey;
+  $('tmdb-key-input').value = STATE.tmdbKey || '';
+  $('omdb-key-input').value = STATE.omdbKey || '';
   $('tmdb-modal').classList.remove('hidden');
   $('tmdb-key-input').focus();
 }
@@ -3273,6 +3356,7 @@ function closeTmdbModal() {
 
 function saveTmdbKey() {
   STATE.tmdbKey = $('tmdb-key-input').value.trim();
+  STATE.omdbKey = $('omdb-key-input').value.trim();
   saveConfig();
   updateKeyBtn();
   closeTmdbModal();
@@ -3281,12 +3365,37 @@ function saveTmdbKey() {
 
 function updateKeyBtn() {
   const btn = $('btn-tmdb-key');
-  if (STATE.tmdbKey) {
+  const hasTmdb = !!STATE.tmdbKey;
+  const hasOmdb = !!STATE.omdbKey;
+  if (hasTmdb && hasOmdb) {
+    btn.textContent = '🔑 TMDB + OMDB ✓';
+    btn.classList.add('active');
+  } else if (hasTmdb) {
     btn.textContent = '🔑 TMDB ✓';
     btn.classList.add('active');
   } else {
     btn.textContent = '🔑 TMDB Key';
     btn.classList.remove('active');
+  }
+}
+
+// Fetch IMDb rating + Metascore từ OMDB
+async function fetchOmdbRating(imdbId) {
+  if (!STATE.omdbKey || !imdbId) return null;
+  try {
+    const res = await fetch(
+      `https://www.omdbapi.com/?i=${imdbId}&apikey=${STATE.omdbKey}`
+    );
+    const data = await res.json();
+    if (data.Response === 'False') return null;
+    return {
+      imdbRating: data.imdbRating !== 'N/A' ? data.imdbRating : null,
+      imdbVotes:  data.imdbVotes  !== 'N/A' ? data.imdbVotes  : null,
+      metascore:  data.Metascore  !== 'N/A' ? data.Metascore  : null,
+      rtScore:    (data.Ratings || []).find(r => r.Source === 'Rotten Tomatoes')?.Value || null,
+    };
+  } catch(e) {
+    return null;
   }
 }
 
@@ -11195,9 +11304,12 @@ async function renderReviewSection(container, movie) {
 function npaTranslate(text) {
   if (!text || text.trim().length < 5) return Promise.resolve(text);
   return fetch(
-    `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=vi&dt=t&q=${encodeURIComponent(text.slice(0, 10000))}`
+    `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=vi&dt=t&q=${encodeURIComponent(text.slice(0, 4500))}`
   ).then(r => r.json())
-   .then(d => (d[0] || []).map(s => s?.[0] || '').join(''))
+   .then(d => {
+     const raw = (d[0] || []).map(s => s?.[0] || '').join('');
+     return raw.normalize('NFC'); // ← thêm dòng này
+   })
    .catch(() => text);
 }
 
